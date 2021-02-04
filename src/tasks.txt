@@ -1,0 +1,58 @@
+Player
+x Move left and right
+x Jump (Define ground and gravity)
+x Melee attack
+x Range attack
+x Hitpoint
+x Can die
+x switch weapon
+
+Camera
+x Move from left to right
+x Always clamp player position to stay inside camera
+
+Level 
+- Long static background
+x Spawn enemies after reach checkpoint
+x Move camera to the next checkpoint.
+x Move will happen after current area condition met.
+Conditons: 
+x Kill all enemies 
+x Level cleared when reach last node and kill all enemies.
+
+Bullet
+x Constant velocity
+- Easing velocity
+- Pull by gravity
+x collision detect (enemy)
+x collision detect (player)
+
+Enemy
+x Spawn
+x Collision detect with player
+x Firing bullets
+x Can die
+
+Enemy type
+x spawner: spawn other type of enemies after no_life_time
+- pop-corn type: flying around
+- pop-corn type: crawling on the ground
+- Boss type
+
+Sound
+- attack sfx
+- enemy die sfx
+- player die sfx
+- bgm
+
+Room
+start:1:2:3:45:boss
+x setup rooms
+- setup enemies
+- enter the exits (level cleared)
+
+
+1: one spawner
+2: two spawner and 1 crawler
+3: spawner on the ground and 2 crawlers
+Boss: Spawn crawler and flying
