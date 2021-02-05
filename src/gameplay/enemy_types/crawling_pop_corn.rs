@@ -1,14 +1,9 @@
-use std::collections::HashMap;
-use std::time::Duration;
-
 use rand::prelude::*;
 
-use tetra::graphics::{self, Color, GeometryBuilder, Mesh, Rectangle, ShapeStyle};
 use tetra::math::Vec2;
 use tetra::Context;
 
 use crate::image_assets::ImageAssets;
-use crate::sprite::AnimationMultiTextures;
 
 use crate::gameplay::enemy_manager::{Enemy, EnemyType};
 use crate::gameplay::player::Player;
@@ -16,24 +11,25 @@ use crate::gameplay::player::Player;
 pub struct CrawlingPopCornEnemyType {}
 
 impl CrawlingPopCornEnemyType {
-    pub fn new(image_assets: &ImageAssets) -> CrawlingPopCornEnemyType {
-        CrawlingPopCornEnemyType {}
+    #[must_use]
+    pub const fn new(_image_assets: &ImageAssets) -> Self {
+        Self {}
     }
 
-    fn apply_gravity(&self, enemy: &mut Enemy, offset: f32) {
+    fn apply_gravity(enemy: &mut Enemy, offset: f32) {
         enemy.position.y += crate::GRAVITY * offset;
         enemy.position.y = enemy.position.y.min(0.0);
     }
 
-    fn on_the_ground(&self, enemy: &mut Enemy) -> bool {
+    fn on_the_ground(enemy: &mut Enemy) -> bool {
         enemy.position.y >= -10.0
     }
 
-    fn random_weapon_tick(&self, enemy: &mut Enemy) {
+    fn random_weapon_tick(enemy: &mut Enemy) {
         enemy.weapon_tick = 800 + random::<u128>() % 800;
     }
 
-    fn update_rotation(&self, enemy: &mut Enemy, player_position: Vec2<f32>) {
+    fn update_rotation(enemy: &mut Enemy, player_position: Vec2<f32>) {
         if enemy.position.x < player_position.x {
             enemy.rotation = 0.05;
         } else {
@@ -60,15 +56,12 @@ impl EnemyType for CrawlingPopCornEnemyType {
             None => 0.0,
         };
 
-        self.random_weapon_tick(enemy);
+        Self::random_weapon_tick(enemy);
 
-        match image_assets.get_animation_object("enemy-crawler-air") {
-            Some(animation) => {
-                enemy.sprite.play(&animation);
-            }
-            None => {
-                enemy.active = false;
-            }
+        if let Some(animation) = image_assets.get_animation_object("enemy-crawler-air") {
+            enemy.sprite.play(&animation);
+        } else {
+            enemy.active = false;
         }
     }
 
@@ -76,24 +69,19 @@ impl EnemyType for CrawlingPopCornEnemyType {
         if enemy.state == 0 {
             let speed = 4.0;
             if enemy.weapon_tick <= 500 {
-                self.apply_gravity(enemy, 0.5 * (1.0 - (enemy.weapon_tick as f32 / 500.0)));
-
-                
+                Self::apply_gravity(enemy, 0.5 * (1.0 - (enemy.weapon_tick as f32 / 500.0)));
             } else {
                 enemy.position.y -= (enemy.rotation * 360.0).to_radians().sin() * speed;
             }
 
-            if self.on_the_ground(enemy) {
+            if Self::on_the_ground(enemy) {
                 enemy.state = 1;
                 enemy.weapon_tick = 1500;
-                self.update_rotation(enemy, player.unwrap().get_hit_point_position());
-                match image_assets.get_animation_object("enemy-crawler-idle") {
-                    Some(animation) => {
-                        enemy.sprite.play(&animation);
-                    }
-                    None => {
-                        enemy.active = false;
-                    }
+                Self::update_rotation(enemy, player.unwrap().get_hit_point_position());
+                if let Some(animation) = image_assets.get_animation_object("enemy-crawler-idle") {
+                    enemy.sprite.play(&animation);
+                } else {
+                    enemy.active = false;
                 }
             }
 
@@ -105,14 +93,13 @@ impl EnemyType for CrawlingPopCornEnemyType {
 
             if enemy.weapon_tick == 0 {
                 enemy.weapon_tick = 1500;
-                self.update_rotation(enemy, player.unwrap().get_hit_point_position());
+                Self::update_rotation(enemy, player.unwrap().get_hit_point_position());
             }
         }
 
-        match enemy.weapon_tick.checked_sub(crate::ONE_FRAME.as_millis()) {
-            Some(v) => enemy.weapon_tick = v,
-            None => enemy.weapon_tick = 0,
-        };
+        enemy.weapon_tick = enemy
+            .weapon_tick
+            .saturating_sub(crate::ONE_FRAME.as_millis());
 
         if enemy.rotation > 0.25 && enemy.rotation < 0.75 {
             enemy.sprite.flip_x(true);
@@ -122,7 +109,6 @@ impl EnemyType for CrawlingPopCornEnemyType {
     }
 
     fn draw(&self, ctx: &mut Context, image_assets: &ImageAssets, enemy: &mut Enemy) {
-
         enemy.sprite.draw(
             ctx,
             enemy.position + Vec2::new(0.0, -8.0),
@@ -131,15 +117,18 @@ impl EnemyType for CrawlingPopCornEnemyType {
         );
     }
 
-    fn die(&self, enemy: &mut Enemy) {
+    fn die(&self, _enemy: &mut Enemy) {
         {
             let mut play_sound_nodes = crate::PLAY_SOUND_NODES.lock().unwrap();
-            play_sound_nodes.insert(String::from("crawl_explode"), (String::from("./resources/sfx/crawl_explode.mp3"), 0.8 ) );
+            play_sound_nodes.insert(
+                String::from("crawl_explode"),
+                (String::from("./resources/sfx/crawl_explode.mp3"), 0.8),
+            );
         }
     }
 
     /// 0: not hit, 1: hit weakpoint, -1: hit shield. (No damage)
-    fn hit_check(&self, enemy: &Enemy, position: &Vec2<f32>, radius: f32) -> i32 {
+    fn hit_check(&self, enemy: &Enemy, position: Vec2<f32>, radius: f32) -> i32 {
         let distance = crate::gameplay::utils::distance_sqr(
             enemy.position.x as i128,
             enemy.position.y as i128,
