@@ -20,20 +20,23 @@ pub struct Keyboard {
     pub switch_key: Button,
 }
 
-impl Keyboard {
-    pub fn new_with_preset_keys() -> Keyboard {
-        Keyboard::new(Key::Up, Key::Down, Key::Left, Key::Right, Key::X, Key::Z)
+impl Default for Keyboard {
+    fn default() -> Self {
+        Self::new(Key::Up, Key::Down, Key::Left, Key::Right, Key::X, Key::Z)
     }
+}
 
-    pub fn new(
+impl Keyboard {
+    #[must_use]
+    pub const fn new(
         up: Key,
         down: Key,
         left: Key,
         right: Key,
         attack_key: Key,
         switch_key: Key,
-    ) -> Keyboard {
-        Keyboard {
+    ) -> Self {
+        Self {
             up_key: Button::new(up),
             down_key: Button::new(down),
             left_key: Button::new(left),
@@ -86,9 +89,10 @@ pub struct Button {
 }
 
 impl Button {
-    pub fn new(button: Key) -> Button {
-        Button {
-            button: button,
+    #[must_use]
+    pub const fn new(button: Key) -> Self {
+        Self {
+            button,
             idle_time: 200,
             hold_time: 0,
         }

@@ -18,20 +18,21 @@ pub struct EnemyManager {
     remove_active_enemy_list: Vec<usize>,
 }
 
-impl EnemyManager {
-    pub fn new() -> EnemyManager {
-        let mut inactive_enemies = vec![];
-        for _ in 1..100 {
-            inactive_enemies.push(Enemy::new());
-        }
-
-        EnemyManager {
+impl Default for EnemyManager {
+    fn default() -> Self {
+        Self {
             active_enemies: vec![],
-            inactive_enemies: inactive_enemies,
+            inactive_enemies: std::iter::repeat(Enemy::new()).take(100).collect(),
             remove_active_enemy_list: vec![],
         }
     }
+}
 
+impl EnemyManager {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
     pub fn spawn_enemy(
         &mut self,
         enemy_type_number: i32,
@@ -39,7 +40,7 @@ impl EnemyManager {
         raw_extra: &str,
         image_assets: &ImageAssets,
     ) -> bool {
-        if self.inactive_enemies.len() > 0 {
+        if !self.inactive_enemies.is_empty() {
             let mut enemy_type_bank = crate::ENEMY_TYPE_BANK.lock().unwrap();
             match enemy_type_bank.get_mut(enemy_type_number) {
                 Some(enemy_type) => match self.inactive_enemies.pop() {
@@ -65,17 +66,14 @@ impl EnemyManager {
     pub fn update_active_enemies(&mut self, player: Option<&Player>, image_assets: &ImageAssets) {
         self.remove_active_enemy_list.clear();
 
-        let mut index = 0;
-        for enemy in self.active_enemies.iter_mut() {
+        for (index, enemy) in self.active_enemies.iter_mut().enumerate() {
             enemy.update(player, image_assets);
-            if enemy.active == false {
+            if !enemy.active {
                 self.remove_active_enemy_list.push(index);
             }
-
-            index += 1;
         }
 
-        if self.remove_active_enemy_list.len() > 0 {
+        if !self.remove_active_enemy_list.is_empty() {
             for index in self.remove_active_enemy_list.iter().rev() {
                 let removed_enemy = self.active_enemies.remove(*index);
                 self.inactive_enemies.push(removed_enemy);
@@ -84,7 +82,7 @@ impl EnemyManager {
     }
 
     pub fn draw(&mut self, ctx: &mut Context, image_assets: &ImageAssets) {
-        for enemy in self.active_enemies.iter_mut() {
+        for enemy in &mut self.active_enemies {
             enemy.draw(ctx, image_assets);
         }
     }
@@ -93,11 +91,13 @@ impl EnemyManager {
         &mut self.active_enemies
     }
 
+    #[must_use]
     pub fn has_active_enemy(&self) -> bool {
-        self.active_enemies.len() > 0
+        !self.active_enemies.is_empty()
     }
 }
 
+#[derive(Clone)]
 pub struct Enemy {
     pub active: bool,
     pub enemy_type: i32,
@@ -121,9 +121,9 @@ pub struct Enemy {
     pub sprite: Sprite,
 }
 
-impl Enemy {
-    pub fn new() -> Enemy {
-        Enemy {
+impl Default for Enemy {
+    fn default() -> Self {
+        Self {
             active: false,
             enemy_type: 0,
             health: 0,
@@ -132,7 +132,7 @@ impl Enemy {
             position: Vec2::zero(),
             rotation: 0.0,
             radius: 0.0,
-            frame:0,
+            frame: 0,
             tick: 0,
             maximum_tick: 1,
             weapon_tick: 0,
@@ -142,6 +142,13 @@ impl Enemy {
             target_position: vec![],
             sprite: Sprite::new(),
         }
+    }
+}
+
+impl Enemy {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn reset(&mut self) {
@@ -168,14 +175,10 @@ impl Enemy {
 
         {
             let enemy_type_bank = crate::ENEMY_TYPE_BANK.lock().unwrap();
-            match enemy_type_bank.get(self.enemy_type) {
-                Some(t) => {
-                    t.update(self, player, image_assets);
-                }
-                None => (),
+            if let Some(t) = enemy_type_bank.get(self.enemy_type) {
+                t.update(self, player, image_assets);
             };
         }
-        
 
         if self.health == 0 {
             self.die();
@@ -184,15 +187,13 @@ impl Enemy {
 
     pub fn draw(&mut self, ctx: &mut Context, image_assets: &ImageAssets) {
         let enemy_type_bank = crate::ENEMY_TYPE_BANK.lock().unwrap();
-        match enemy_type_bank.get(self.enemy_type) {
-            Some(t) => {
-                t.draw(ctx, image_assets, self);
-            }
-            None => (),
+        if let Some(t) = enemy_type_bank.get(self.enemy_type) {
+            t.draw(ctx, image_assets, self);
         };
     }
 
-    pub fn hit_check(&self, position: &Vec2<f32>, radius: f32) -> i32 {
+    #[must_use]
+    pub fn hit_check(&self, position: Vec2<f32>, radius: f32) -> i32 {
         let enemy_type_bank = crate::ENEMY_TYPE_BANK.lock().unwrap();
         match enemy_type_bank.get(self.enemy_type) {
             Some(t) => {
@@ -207,7 +208,7 @@ impl Enemy {
         0
     }
 
-    pub fn get_hit(&mut self, hit_position: &Vec2<f32>, damage: u32) {
+    pub fn get_hit(&mut self, hit_position: Vec2<f32>, damage: u32) {
         if self.hit_frame == 0 {
             self.hit_frame = 8;
         }
@@ -219,36 +220,31 @@ impl Enemy {
             hit_position.y as i128,
         );
 
-        let hit_position = match distance > (self.radius * self.radius) as i128 {
-            true => &self.position,
-            false => hit_position,
+        let hit_position = if distance > (self.radius * self.radius) as i128 {
+            &self.position
+        } else {
+            &hit_position
         };
 
         // Use hit_position for spawning hitting particle here
 
-        match self.health.checked_sub(damage) {
-            Some(v) => self.health = v,
-            None => self.health = 0,
-        }
+        self.health = self.health.saturating_sub(damage);
 
-        self.spawn_splash(*hit_position, 0.9);
+        Self::spawn_splash(*hit_position, 0.9);
     }
 
     fn die(&mut self) {
-        self.spawn_splash(self.position, 1.6);
+        Self::spawn_splash(self.position, 1.6);
         self.active = false;
 
         let enemy_type_bank = crate::ENEMY_TYPE_BANK.lock().unwrap();
-        match enemy_type_bank.get(self.enemy_type) {
-            Some(t) => {
-                t.die(self);
-            }
-            None => (),
+        if let Some(t) = enemy_type_bank.get(self.enemy_type) {
+            t.die(self);
         };
     }
 
-    pub fn spawn_splash(&self, offset_position: Vec2<f32>, scale_value: f32) {
-        Enemy::spawn_random_splash_particle(offset_position, scale_value);
+    pub fn spawn_splash(offset_position: Vec2<f32>, scale_value: f32) {
+        Self::spawn_random_splash_particle(offset_position, scale_value);
     }
 
     pub fn spawn_random_splash_particle(offset_position: Vec2<f32>, scale_value: f32) {
@@ -291,32 +287,32 @@ impl Enemy {
 
         let mut bullet_spawn_nodes = crate::BULLET_SPAWN_NODES.lock().unwrap();
         bullet_spawn_nodes.push(BulletSpawnNode {
-            bullet_type: bullet_type,
+            bullet_type,
             position: from,
             owner_type: BulletOwner::ENEMY,
-            rotation: rotation,
-            speed: speed,
-            radius: radius,
-            extra: String::from(raw_extra),
+            rotation,
+            speed,
+            radius,
+            extra: raw_extra.to_owned(),
         })
     }
 
     pub fn parsing_extra(&mut self, raw_extra: &str) {
-        if raw_extra.len() == 0 {
+        if raw_extra.is_empty() {
             return;
         }
 
         let split: Vec<&str> = raw_extra.split('|').collect();
 
-        for text in split.iter() {
-            if text.len() == 0 {
+        for text in &split {
+            if text.is_empty() {
                 continue;
             }
 
             let parameter: Vec<&str> = text.split('=').collect();
             if parameter.len() == 2 {
                 self.extra
-                    .insert(String::from(parameter[0]), String::from(parameter[1]));
+                    .insert(parameter[0].to_owned(), parameter[1].to_owned());
             } else {
                 panic!("Incorrect parameter format: {} ({})", text, raw_extra);
             }
@@ -332,21 +328,21 @@ pub trait EnemyType {
     fn die(&self, enemy: &mut Enemy);
 
     /// 0: not hit, 1: hit weakpoint, -1: hit shield. (No damage)
-    fn hit_check(&self, enemy: &Enemy, position: &Vec2<f32>, radius: f32) -> i32;
+    fn hit_check(&self, enemy: &Enemy, position: Vec2<f32>, radius: f32) -> i32;
 }
 
+#[derive(Default)]
 pub struct EnemyTypeBank {
     types: HashMap<i32, Box<dyn EnemyType + Send + Sync>>,
 }
 
 impl EnemyTypeBank {
-    pub fn new() -> EnemyTypeBank {
-        EnemyTypeBank {
-            types: HashMap::new(),
-        }
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn setup(&mut self, image_assets: &ImageAssets, required_list: &Vec<i32>) {
+    pub fn setup(&mut self, image_assets: &ImageAssets, required_list: &[i32]) {
         for enemy_type_number in required_list {
             match enemy_type_number {
                 0 => {
@@ -367,12 +363,10 @@ impl EnemyTypeBank {
                             image_assets,
                         );
                     self.add(Box::new(enemy_type));
-                },
+                }
                 3 => {
                     let enemy_type =
-                        crate::gameplay::enemy_types::boss::BossEnemyType::new(
-                            image_assets,
-                        );
+                        crate::gameplay::enemy_types::boss::BossEnemyType::new(image_assets);
                     self.add(Box::new(enemy_type));
                 }
                 _ => (),
@@ -384,8 +378,8 @@ impl EnemyTypeBank {
         self.types.insert(enemy_type.enemy_type_id(), enemy_type);
     }
 
-    pub fn get(&self, number: i32) -> Option<&Box<dyn EnemyType + Send + Sync>> {
-        self.types.get(&number)
+    pub fn get(&self, number: i32) -> Option<&(dyn EnemyType + Send + Sync)> {
+        self.types.get(&number).map(Box::as_ref)
     }
 
     pub fn get_mut(&mut self, number: i32) -> Option<&mut Box<dyn EnemyType + Send + Sync>> {

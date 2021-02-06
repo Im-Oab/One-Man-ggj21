@@ -7,6 +7,7 @@ use tetra::Context;
 use crate::sprite::AnimationMultiTextures;
 
 /// Struct for a content data. One object per file.
+#[derive(Clone)]
 pub struct ContentPath {
     /// Key for access content after loaded
     pub key: String,
@@ -15,20 +16,9 @@ pub struct ContentPath {
 }
 
 impl ContentPath {
-    pub fn new(key: String, path: String) -> ContentPath {
-        ContentPath {
-            key: key,
-            path: path,
-        }
-    }
-}
-
-impl Clone for ContentPath {
-    fn clone(&self) -> ContentPath {
-        ContentPath {
-            key: self.key.clone(),
-            path: self.path.clone(),
-        }
+    #[must_use]
+    pub const fn new(key: String, path: String) -> Self {
+        Self { key, path }
     }
 }
 
@@ -61,12 +51,13 @@ impl ImageAssets {
     /// Currently, support only loading Texture
     /// # Arguments:
     ///
-    /// * texture_loading_list - List of texture files that need to load.
+    /// * `texture_loading_list` - List of texture files that need to load.
     ///
-    pub fn new(texture_loading_list: Vec<ContentPath>) -> ImageAssets {
-        ImageAssets {
+    #[must_use]
+    pub fn new(texture_loading_list: Vec<ContentPath>) -> Self {
+        Self {
             texture_id_counter: 1,
-            texture_loading_list: texture_loading_list,
+            texture_loading_list,
             textures: HashMap::new(),
             texture_ids: HashMap::new(),
             animations: HashMap::new(),
@@ -77,37 +68,38 @@ impl ImageAssets {
         }
     }
 
+    #[must_use]
     pub fn hit_shader(&self) -> Option<&Shader> {
         self.shaders.get("hit-frame")
     }
 
+    #[must_use]
     pub fn flash_red_shader(&self) -> Option<&Shader> {
         self.shaders.get("flash-red")
     }
 
+    #[must_use]
     pub fn get_shader(&self, key: &str) -> Option<&Shader> {
         self.shaders.get(key)
     }
 
-    pub fn get_id(&self, key: &String) -> u128 {
-        match self.texture_ids.get(key) {
-            Some(id) => *id,
-            None => 0,
-        }
+    #[must_use]
+    pub fn get_id(&self, key: &str) -> u128 {
+        self.texture_ids.get(key).copied().unwrap_or(0)
     }
 
+    #[must_use]
     pub fn get_by_id(&self, texture_id: &u128) -> Option<&Texture> {
         self.textures.get(texture_id)
     }
 
-    pub fn load_animations(&mut self, animations: &Vec<(&str, Vec<String>, u64)>) -> usize {
-        if self.textures.len() == 0 {
+    pub fn load_animations(&mut self, animations: &[(&str, Vec<String>, u64)]) -> usize {
+        if self.textures.is_empty() {
             panic!("ImageAssets try to load animation before load textures.");
         }
-        for anim in animations.iter() {
-            let name = anim.0.clone();
+        for &(name, ref texture_names, num) in animations {
             let mut frame_ids = Vec::new();
-            for texture_name in anim.1.iter() {
+            for texture_name in texture_names {
                 let texture_id = self.get_id(texture_name);
                 if texture_id > 0 {
                     frame_ids.push(texture_id);
@@ -119,22 +111,21 @@ impl ImageAssets {
                 }
             }
 
-            self.animations.insert(String::from(name), frame_ids);
-            self.animations_frame_length
-                .insert(String::from(anim.0), anim.2);
+            self.animations.insert(name.to_owned(), frame_ids);
+            self.animations_frame_length.insert(name.to_owned(), num);
 
-            println!("Loaded animation: {}", anim.0);
+            println!("Loaded animation: {}", name);
         }
 
         self.animations.len()
     }
 
-    pub fn load_shaders(&mut self, ctx: &mut Context, shaders: &Vec<(String, String)>) -> usize {
+    pub fn load_shaders(&mut self, ctx: &mut Context, shaders: &[(String, String)]) -> usize {
         let mut loaded_count = 0;
-        for shader_path in shaders.iter() {
-            match Shader::from_fragment_file(ctx, shader_path.1.to_owned()) {
+        for (shader, path) in shaders {
+            match Shader::from_fragment_file(ctx, path.to_owned()) {
                 Ok(v) => {
-                    self.shaders.insert(shader_path.0.to_owned(), v);
+                    self.shaders.insert(shader.to_owned(), v);
                     loaded_count += 1;
                 }
                 Err(e) => panic!("Shader file missing. {}", e),
@@ -144,46 +135,45 @@ impl ImageAssets {
         loaded_count
     }
 
+    #[must_use]
     pub fn get_all_animation_keys(&self) -> Vec<&String> {
         self.animations.keys().collect()
     }
 
-    pub fn get_animation_frames(&self, animation_name: &String) -> Option<&Vec<u128>> {
+    #[must_use]
+    pub fn get_animation_frames(&self, animation_name: &str) -> Option<&Vec<u128>> {
         self.animations.get(animation_name)
     }
 
-    pub fn get_animation_frame_length(&self, animation_name: &String) -> u64 {
-        match self.animations_frame_length.get(animation_name) {
-            Some(v) => *v,
-            None => 15,
-        }
+    #[must_use]
+    pub fn get_animation_frame_length(&self, animation_name: &str) -> u64 {
+        self.animations_frame_length
+            .get(animation_name)
+            .copied()
+            .unwrap_or(15)
     }
 
+    #[must_use]
     pub fn get_animation_object(&self, animation_name: &str) -> Option<AnimationMultiTextures> {
-        match self.animations.get(animation_name) {
-            Some(frames) => {
-                let mut animation_object = AnimationMultiTextures::new_with_frames(frames.clone());
-                animation_object.name = String::from(animation_name);
-                animation_object.frame_length = Duration::from_millis(
-                    1000 / self.get_animation_frame_length(&animation_object.name),
-                );
-                return Some(animation_object);
-            }
-            None => (),
+        if let Some(frames) = self.animations.get(animation_name) {
+            let mut animation_object = AnimationMultiTextures::new_with_frames(&frames.clone());
+            animation_object.name = animation_name.to_owned();
+            animation_object.frame_length = Duration::from_millis(
+                1000 / self.get_animation_frame_length(&animation_object.name),
+            );
+            return Some(animation_object);
         }
 
         None
     }
 
-    pub fn add_content_list(&mut self, list: &Vec<ContentPath>) {
-        for ref_node in list.iter() {
-            self.texture_loading_list.push(ref_node.clone());
-        }
+    pub fn add_content_list(&mut self, list: &[ContentPath]) {
+        self.texture_loading_list.append(&mut list.to_vec());
     }
 
     pub fn add_content(&mut self, name: &str, path: &str) {
         self.texture_loading_list
-            .push(ContentPath::new(String::from(name), String::from(path)));
+            .push(ContentPath::new(name.to_owned(), path.to_owned()));
     }
 
     /// Is still loading?
@@ -192,16 +182,17 @@ impl ImageAssets {
     ///
     /// True: still loading, False: loaded all contents
     ///
+    #[must_use]
     pub fn is_loading(&self) -> bool {
-        self.texture_loading_list.len() > 0
+        !self.texture_loading_list.is_empty()
     }
 
     /// Call function for loading one object from the list.
-    /// Ideally, Call this function in update() and check until is_loading() return false.
+    /// Ideally, Call this function in `update()` and check until `is_loading()` return false.
     ///
     pub fn loading(&mut self, ctx: &mut Context) {
         if self.is_loading() {
-            if self.shaders.len() == 0 {
+            if self.shaders.is_empty() {
                 // Load shader files here
             }
 
@@ -212,18 +203,15 @@ impl ImageAssets {
 
             if self.tick.as_millis() > 200 {
                 for _count in 0..20 {
-                    match self.texture_loading_list.pop() {
-                        Some(content) => {
-                            match Texture::new(ctx, &content.path) {
-                                Ok(v) => {
-                                    self.add(&content.key, v);
+                    if let Some(content) = self.texture_loading_list.pop() {
+                        match Texture::new(ctx, &content.path) {
+                            Ok(v) => {
+                                self.add(&content.key, v);
 
-                                    println!("Loaded \"{}\" : \"{}\"", content.key, content.path);
-                                }
-                                Err(e) => println!("Load texture error : {}", e),
-                            };
-                        }
-                        None => (),
+                                println!("Loaded \"{}\" : \"{}\"", content.key, content.path);
+                            }
+                            Err(e) => println!("Load texture error : {}", e),
+                        };
                     };
                 }
 
@@ -233,7 +221,7 @@ impl ImageAssets {
     }
 
     /// Add texture into texture bank with key
-    fn add(&mut self, key: &String, texture: Texture) {
+    fn add(&mut self, key: &str, texture: Texture) {
         self.texture_ids
             .insert(key.to_string(), self.texture_id_counter);
         self.textures.insert(self.texture_id_counter, texture);
@@ -242,23 +230,18 @@ impl ImageAssets {
     }
 
     /// Get reference to texture in the texture bank by key
+    #[must_use]
     pub fn get(&self, key: &str) -> Option<&Texture> {
-        match self.texture_ids.get(key) {
-            Some(id) => {
-                return self.textures.get(id);
-            }
-            None => (),
+        if let Some(id) = self.texture_ids.get(key) {
+            return self.textures.get(id);
         }
 
         None
     }
 
     /// Clone texture in the texture bank by key
-    fn make(&self, key: &String) -> Option<Texture> {
-        match self.get(key) {
-            Some(v) => Some(v.clone()),
-            None => None,
-        }
+    fn make(&self, key: &str) -> Option<Texture> {
+        self.get(key).cloned()
     }
 
     /// Clear all not loaded/loaded contents
@@ -270,9 +253,10 @@ impl ImageAssets {
     }
 
     pub fn add_mesh(&mut self, key: &str, mesh: Mesh) {
-        self.meshes.insert(String::from(key), mesh);
+        self.meshes.insert(key.to_owned(), mesh);
     }
 
+    #[must_use]
     pub fn get_mesh(&self, key: &str) -> Option<&Mesh> {
         self.meshes.get(key)
     }

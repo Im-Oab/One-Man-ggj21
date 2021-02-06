@@ -41,7 +41,8 @@ lazy_static! {
     pub static ref PARTICLE_TYPE_BANK: Mutex<ParticleTypeBank> =
         Mutex::new(ParticleTypeBank::new());
     pub static ref PARTICLE_SPAWN_NODES: Mutex<Vec<ParticleSpawnNode>> = Mutex::new(Vec::new());
-    pub static ref PLAY_SOUND_NODES: Mutex<HashMap<String, (String, f32)>> = Mutex::new(HashMap::new());
+    pub static ref PLAY_SOUND_NODES: Mutex<HashMap<String, (String, f32)>> =
+        Mutex::new(HashMap::new());
 }
 
 struct GameState {
@@ -73,10 +74,10 @@ pub mod gameplay {
     }
 
     pub mod enemy_types {
+        pub mod boss;
         pub mod crawling_pop_corn;
         pub mod flying_pop_corn;
         pub mod spawner;
-        pub mod boss;
     }
 
     pub mod particle_types {
@@ -85,13 +86,13 @@ pub mod gameplay {
 }
 
 impl GameState {
-    fn new(ctx: &mut Context) -> tetra::Result<GameState> {
+    fn new(ctx: &mut Context) -> tetra::Result<Self> {
         // let initial_scene = second_scene::SecondScene::new(ctx)?;
         // let initial_scene = AnimationPreview::new(ctx)?;
         // let initial_scene = EnemySandboxScene::new()?;
         let initial_scene = GamePlayScene::new(ctx)?;
 
-        Ok(GameState {
+        Ok(Self {
             scenes: vec![Box::new(initial_scene)],
             scaler: ScreenScaler::with_window_size(
                 ctx,
@@ -108,10 +109,13 @@ use tetra::window;
 impl State for GameState {
     /// Call scene.update() and look for "Transition" result for chaning scene.
     fn update(&mut self, ctx: &mut Context) -> tetra::Result {
-        window::set_title(ctx, format!("One-Man: {}", tetra::time::get_fps(ctx) as i32));
+        window::set_title(
+            ctx,
+            format!("One-Man: {}", tetra::time::get_fps(ctx) as i32),
+        );
 
-        match self.scenes.last_mut() {
-            Some(active_scene) => match active_scene.update(ctx)? {
+        if let Some(active_scene) = self.scenes.last_mut() {
+            match active_scene.update(ctx)? {
                 Transition::None => {}
                 Transition::Push(s) => {
                     self.scenes.push(s);
@@ -123,8 +127,7 @@ impl State for GameState {
                     self.scenes.clear();
                     self.scenes.push(s)
                 }
-            },
-            None => {}
+            }
         }
 
         Ok(())
