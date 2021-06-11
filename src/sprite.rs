@@ -1,5 +1,6 @@
+use tetra::graphics::animation::Animation;
 use tetra::graphics::Color;
-use tetra::graphics::{DrawParams, Rectangle};
+use tetra::graphics::{self, DrawParams, Drawable, Rectangle, Texture};
 use tetra::math::Vec2;
 use tetra::Context;
 
@@ -7,7 +8,6 @@ use std::time::Duration;
 
 use crate::image_assets::ImageAssets;
 
-#[derive(Clone)]
 pub struct Sprite {
     /// True: Looping animation.
     /// False: stop animation at last frame.
@@ -39,9 +39,9 @@ pub struct Sprite {
     color: Color,
 }
 
-impl Default for Sprite {
-    fn default() -> Self {
-        Self {
+impl Sprite {
+    pub fn new() -> Sprite {
+        Sprite {
             is_loop: true,
             frame_index: 0,
             animation: AnimationMultiTextures::new(),
@@ -54,13 +54,6 @@ impl Default for Sprite {
             size: Vec2::one(),
             color: Color::rgba(1.0, 1.0, 1.0, 1.0),
         }
-    }
-}
-
-impl Sprite {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
     }
 
     /// Set default values for all variables except animation.
@@ -77,8 +70,7 @@ impl Sprite {
     }
 
     /// Get current animation name
-    #[must_use]
-    pub const fn get_current_animation_name(&self) -> &String {
+    pub fn get_current_animation_name(&self) -> &String {
         &self.animation.name
     }
 
@@ -88,15 +80,14 @@ impl Sprite {
     }
 
     /// Get animation loop flag
-    #[must_use]
-    pub const fn is_loop(&self) -> bool {
+    pub fn is_loop(&self) -> bool {
         self.is_loop
     }
 
-    /// If animation at last frame. This function will restart `frame_index`.
+    /// If animation at last frame. This function will restart frame_index.
     pub fn continue_loop(&mut self) {
         let frames = self.animation.frames.len();
-        self.frame_index %= frames;
+        self.frame_index = self.frame_index % frames;
     }
 
     pub fn show_texture(&mut self, texture_id: u128) {
@@ -120,7 +111,7 @@ impl Sprite {
         self.pause = false;
     }
 
-    /// Use for update animation `frame_index`.
+    /// Use for update animation frame_index.
     fn advance(&mut self) -> bool {
         let frame_length = self.animation.frame_length;
 
@@ -129,14 +120,14 @@ impl Sprite {
             None => self.frame_duration = Duration::from_millis(0),
         };
 
-        if self.frame_duration >= frame_length && !self.pause {
+        if self.frame_duration >= frame_length && self.pause == false {
             while self.frame_duration >= frame_length {
                 self.frame_duration -= frame_length;
                 self.frame_index += 1;
             }
 
-            if self.is_end_of_animation() {
-                if self.is_loop {
+            if self.is_end_of_animation() == true {
+                if self.is_loop == true {
                     self.continue_loop();
                 } else {
                     self.frame_index = self.animation.frames.len() - 1;
@@ -158,35 +149,41 @@ impl Sprite {
         rotation: f32,
         image_assets: &ImageAssets,
     ) {
-        if let Some(frame) = self.animation.frames.get(self.frame_index) {
-            if let Some(texture) = image_assets.get_by_id(&frame.texture_id) {
-                let mut origin = self.get_origin(self.anchor.x, self.anchor.y);
-                let mut rect = frame.rect;
-                if rect.width == 0.0 && rect.height == 0.0 {
-                    let width = texture.width() as f32;
-                    let height = texture.height() as f32;
-                    rect.width = width;
-                    rect.height = height;
+        match self.animation.frames.get(self.frame_index) {
+            Some(frame) => {
+                match image_assets.get_by_id(&frame.texture_id) {
+                    Some(texture) => {
+                        let mut origin = self.get_origin(self.anchor.x, self.anchor.y);
+                        let mut rect = frame.rect;
+                        if rect.width == 0.0 && rect.height == 0.0 {
+                            let width = texture.width() as f32;
+                            let height = texture.height() as f32;
+                            rect.width = width;
+                            rect.height = height;
 
-                    origin.x = width * self.anchor.x;
-                    origin.y = height * self.anchor.y;
-                }
+                            origin.x = width * self.anchor.x;
+                            origin.y = height * self.anchor.y;
+                        }
 
-                self.size.x = rect.width;
-                self.size.y = rect.height;
+                        self.size.x = rect.width;
+                        self.size.y = rect.height;
 
-                tetra::graphics::draw(
-                    ctx,
-                    texture,
-                    DrawParams::new()
-                        .position(position + self.position)
-                        .origin(origin)
-                        .rotation((rotation * 360.0).to_radians())
-                        .scale(self.scale)
-                        .clip(rect)
-                        .color(Color::rgba(1.0, 1.0, 1.0, self.alpha)),
-                );
-            };
+                        tetra::graphics::draw(
+                            ctx,
+                            texture,
+                            DrawParams::new()
+                                .position(position + self.position)
+                                .origin(origin)
+                                .rotation((rotation * 360.0).to_radians())
+                                .scale(self.scale)
+                                .clip(rect)
+                                .color(Color::rgba(1.0, 1.0, 1.0, self.alpha)),
+                        );
+                    }
+                    None => (),
+                };
+            }
+            None => (),
         };
     }
 
@@ -198,37 +195,43 @@ impl Sprite {
         image_assets: &ImageAssets,
         clipping: Vec2<f32>,
     ) {
-        if let Some(frame) = self.animation.frames.get(self.frame_index) {
-            if let Some(texture) = image_assets.get_by_id(&frame.texture_id) {
-                let mut origin = self.get_origin(self.anchor.x, self.anchor.y);
-                let mut rect = frame.rect;
-                if rect.width == 0.0 && rect.height == 0.0 {
-                    let width = texture.width() as f32;
-                    let height = texture.height() as f32;
-                    rect.width = width;
-                    rect.height = height;
+        match self.animation.frames.get(self.frame_index) {
+            Some(frame) => {
+                match image_assets.get_by_id(&frame.texture_id) {
+                    Some(texture) => {
+                        let mut origin = self.get_origin(self.anchor.x, self.anchor.y);
+                        let mut rect = frame.rect;
+                        if rect.width == 0.0 && rect.height == 0.0 {
+                            let width = texture.width() as f32;
+                            let height = texture.height() as f32;
+                            rect.width = width;
+                            rect.height = height;
 
-                    origin.x = width * self.anchor.x;
-                    origin.y = height * self.anchor.y;
-                }
+                            origin.x = width * self.anchor.x;
+                            origin.y = height * self.anchor.y;
+                        }
 
-                self.size.x = rect.width;
-                self.size.y = rect.height;
-                rect.width *= clipping.x;
-                rect.height *= clipping.y;
+                        self.size.x = rect.width;
+                        self.size.y = rect.height;
+                        rect.width = rect.width * clipping.x;
+                        rect.height = rect.height * clipping.y;
 
-                tetra::graphics::draw(
-                    ctx,
-                    texture,
-                    DrawParams::new()
-                        .position(position)
-                        .origin(origin)
-                        .rotation((rotation * 360.0).to_radians())
-                        .scale(self.scale)
-                        .clip(rect)
-                        .color(Color::rgba(1.0, 1.0, 1.0, self.alpha)),
-                );
-            };
+                        tetra::graphics::draw(
+                            ctx,
+                            texture,
+                            DrawParams::new()
+                                .position(position)
+                                .origin(origin)
+                                .rotation((rotation * 360.0).to_radians())
+                                .scale(self.scale)
+                                .clip(rect)
+                                .color(Color::rgba(1.0, 1.0, 1.0, self.alpha)),
+                        );
+                    }
+                    None => (),
+                };
+            }
+            None => (),
         };
     }
 
@@ -236,13 +239,12 @@ impl Sprite {
         self.advance()
     }
 
-    #[must_use]
     pub fn is_end_of_animation(&self) -> bool {
         if self.pause && self.frame_index == self.animation.frames.len() - 1 {
             return true;
         }
 
-        if self.animation.frames.is_empty() {
+        if self.animation.frames.len() == 0 {
         } else if self.frame_index > self.animation.frames.len() - 1 {
             return true;
         }
@@ -250,13 +252,11 @@ impl Sprite {
         false
     }
 
-    #[must_use]
     pub fn get_total_frames(&self) -> usize {
         self.animation.frames.len()
     }
 
-    #[must_use]
-    pub const fn get_current_frame_index(&self) -> usize {
+    pub fn get_current_frame_index(&self) -> usize {
         self.frame_index
     }
 }
@@ -288,7 +288,7 @@ impl Sprite {
     }
 
     fn get_origin(&self, x: f32, y: f32) -> Vec2<f32> {
-        if self.animation.frames.is_empty() {
+        if self.animation.frames.len() == 0 {
             return Vec2::zero();
         }
 
@@ -312,14 +312,12 @@ impl Sprite {
         self.color.a = alpha;
     }
 
-    #[must_use]
-    pub const fn alpha(&self) -> f32 {
+    pub fn alpha(&self) -> f32 {
         self.alpha
     }
 }
 
-/// Animation object that consist of multiple `FrameRectangle` objects.
-#[derive(Clone)]
+/// Animation object that consist of multiple FrameRectangle objects.
 pub struct AnimationMultiTextures {
     /// Length between frames.
     /// Playing animation will use this value for change between frames.
@@ -330,27 +328,33 @@ pub struct AnimationMultiTextures {
     pub name: String,
 }
 
-impl Default for AnimationMultiTextures {
-    fn default() -> Self {
-        Self {
-            frame_length: Duration::from_millis(1000 / 8),
-            frames: Vec::new(),
-            name: String::new(),
+impl Clone for AnimationMultiTextures {
+    fn clone(&self) -> AnimationMultiTextures {
+        AnimationMultiTextures {
+            frame_length: self.frame_length.clone(),
+            frames: self.frames.clone(),
+            name: self.name.clone(),
         }
     }
 }
 
 impl AnimationMultiTextures {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new() -> AnimationMultiTextures {
+        AnimationMultiTextures {
+            frame_length: Duration::from_millis(1000 / 8),
+            frames: Vec::new(),
+            name: String::from(""),
+        }
     }
 
-    #[must_use]
-    pub fn new_with_frames(frames: &[u128]) -> Self {
-        let mut anim_obj = Self::default();
+    pub fn new_with_frames(frames: Vec<u128>) -> AnimationMultiTextures {
+        let mut anim_obj = AnimationMultiTextures {
+            frame_length: Duration::from_millis(1000 / 12),
+            frames: Vec::new(),
+            name: String::from(""),
+        };
 
-        anim_obj.add_frames(frames);
+        anim_obj.add_frames(&frames);
 
         anim_obj
     }
@@ -364,8 +368,8 @@ impl AnimationMultiTextures {
     }
 
     /// Create and Append multiple frames with no-size into animation frames
-    pub fn add_frames(&mut self, frames: &[u128]) {
-        for texture_id in frames {
+    pub fn add_frames(&mut self, frames: &Vec<u128>) {
+        for texture_id in frames.iter() {
             self.add(*texture_id);
         }
     }
@@ -377,8 +381,8 @@ impl AnimationMultiTextures {
 }
 
 /// Frame area inside texture.
-/// It uses for showing animation on `CustomSprite`
-#[derive(Clone, Copy)]
+/// It uses for showing animation on CustomSprite
+#[derive(Copy)]
 pub struct FrameRectangle {
     /// Reference to texture using texture_id. Require ImageAssets for getting actual Texture.
     pub texture_id: u128,
@@ -387,8 +391,19 @@ pub struct FrameRectangle {
 }
 
 impl FrameRectangle {
-    #[must_use]
-    pub const fn new(texture_id: u128, rect: Rectangle) -> Self {
-        Self { texture_id, rect }
+    pub fn new(texture_id: u128, rect: Rectangle) -> FrameRectangle {
+        FrameRectangle {
+            texture_id: texture_id,
+            rect: rect,
+        }
+    }
+}
+
+impl Clone for FrameRectangle {
+    fn clone(&self) -> FrameRectangle {
+        FrameRectangle {
+            texture_id: self.texture_id,
+            rect: self.rect,
+        }
     }
 }

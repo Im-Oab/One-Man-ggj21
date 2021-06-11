@@ -1,18 +1,18 @@
 use rand::prelude::*;
 use std::collections::VecDeque;
 
-use tetra::audio::{Sound, SoundInstance};
 use tetra::graphics::{self, Camera, Color, GeometryBuilder, Rectangle, ShapeStyle};
 use tetra::input::{self, Key};
 use tetra::math::Vec2;
 use tetra::Context;
+use tetra::audio::{Sound, SoundInstance, SoundState};
 
-use crate::image_assets::ImageAssets;
+use crate::image_assets::{ ImageAssets};
 use crate::scene::{Scene, Transition};
 
 use crate::gameplay::bullet_pool::{Bullet, BulletPool};
 use crate::gameplay::enemy_manager::{Enemy, EnemyManager};
-use crate::gameplay::level::{EnemySpawnNode, Level, PatternNode};
+use crate::gameplay::level::{EnemySpawnNode, Level,  PatternNode};
 use crate::gameplay::particle_manager::{ParticleDrawLayer, ParticleManager};
 use crate::gameplay::player::{Player, WeaponType};
 use crate::gameplay::ui::UI;
@@ -42,10 +42,7 @@ pub struct GamePlayScene {
 }
 
 impl GamePlayScene {
-    /// # Errors
-    ///
-    /// Should not return `Err`
-    pub fn new(ctx: &mut Context) -> tetra::Result<Self> {
+    pub fn new(ctx: &mut Context) -> tetra::Result<GamePlayScene> {
         let camera = Camera::new(crate::SCREEN_WIDTH, crate::SCREEN_HEIGHT);
 
         {
@@ -63,22 +60,22 @@ impl GamePlayScene {
             let mut bullet_pool = crate::BULLET_POOL.lock().unwrap();
             bullet_pool.clear();
         }
-
+        
         {
             let mut bullet_spawn_nodes = crate::BULLET_SPAWN_NODES.lock().unwrap();
             bullet_spawn_nodes.clear();
         }
-
+        
         {
             let mut bullet_type_bank = crate::BULLET_TYPE_BANK.lock().unwrap();
             bullet_type_bank.clear();
         }
-
+    
         {
             let mut enemy_type_bank = crate::ENEMY_TYPE_BANK.lock().unwrap();
             enemy_type_bank.clear();
         }
-
+        
         {
             let mut enemy_spawn_nodes = crate::ENEMY_SPAWN_NODES.lock().unwrap();
             enemy_spawn_nodes.clear();
@@ -88,11 +85,12 @@ impl GamePlayScene {
             let mut partcie_type_bank = crate::PARTICLE_TYPE_BANK.lock().unwrap();
             partcie_type_bank.clear();
         }
-
+        
         {
             let mut particle_spawn_nodes = crate::PARTICLE_SPAWN_NODES.lock().unwrap();
             particle_spawn_nodes.clear();
         }
+  
 
         let texture_list = vec![];
         let mut image_assets = ImageAssets::new(texture_list);
@@ -136,33 +134,45 @@ impl GamePlayScene {
 
         let mut level = Level::new();
         setup_level_for_spawning_enemies(&mut level);
-
-        Ok(Self {
+        
+       
+        Ok(GamePlayScene {
             reach_camera_target: false,
             camera_target_position: Vec2::new(0.0, -crate::SCREEN_HEIGHT * 0.3),
-            camera,
+            camera: camera,
             player: Player::new(ctx, 1),
-            image_assets,
+            image_assets: image_assets,
             state: GamePlayState::Loading,
             enemy_manager: EnemyManager::new(),
             particle_manager: ParticleManager::new(),
-            level,
+            level: level,
             waiting_time: 1500,
             bgm: None,
             ui: UI::new(),
         })
     }
 
-    fn play_sound(ctx: &mut Context, path: &str, volume: f32) -> Option<SoundInstance> {
-        match Sound::new(path) {
-            Ok(s) => match s.play_with(ctx, volume, 1.0) {
-                Ok(instance) => Some(instance),
-                Err(e) => {
-                    println!("Play sound error: {} {}", path, e);
-                    None
+    fn play_sound(ctx: &mut Context, path: &str, volume: f32) -> Option<SoundInstance>
+    {
+        match Sound::new(path)
+        {
+            Ok(s) => {
+
+                match s.play_with(ctx, volume, 1.0)
+                {
+                    Ok(instance) => {
+                        Some(instance)
+                    },
+                    Err(e) =>
+                    {
+                        println!("Play sound error: {} {}", path, e);
+                        None
+                    }
                 }
-            },
-            Err(e) => {
+            }
+            , 
+            Err(e) =>
+            {
                 println!("Play sound error: {} {}", path, e);
                 None
             }
@@ -174,24 +184,26 @@ impl Scene for GamePlayScene {
     fn update(&mut self, ctx: &mut Context) -> tetra::Result<Transition> {
         match self.state {
             GamePlayState::Loading => {
-                if self.image_assets.is_loading() {
+                if self.image_assets.is_loading() == true {
                     self.image_assets.loading(ctx);
                 } else {
                     self.state = GamePlayState::Preparing;
                 }
+
+
             }
             GamePlayState::Preparing => {
                 // Load all animations in the scene
                 setup_animations(&mut self.image_assets);
 
-                self.bgm = Self::play_sound(ctx, "./resources/bgm/a.mp3", 0.25);
+                self.bgm = GamePlayScene::play_sound(ctx, "./resources/bgm/a.mp3", 0.25);
 
                 {
                     let mut bullet_type_bank = crate::BULLET_TYPE_BANK.lock().unwrap();
                     bullet_type_bank.setup(ctx, &self.image_assets);
                 }
 
-                self.player.setup(&self.image_assets);
+                self.player.setup(&mut self.image_assets);
 
                 // Animations have to load before setup UI.
                 self.ui.setup(ctx, &self.image_assets);
@@ -203,8 +215,14 @@ impl Scene for GamePlayScene {
                 }
 
                 {
+                    let mut required_list = vec![];
+                    required_list.push(0);
+                    required_list.push(1);
+                    required_list.push(2);
+                    required_list.push(3);
+
                     let mut enemy_type_bank = crate::ENEMY_TYPE_BANK.lock().unwrap();
-                    enemy_type_bank.setup(&self.image_assets, &[0, 1, 2, 3]);
+                    enemy_type_bank.setup(&self.image_assets, &required_list);
                 }
 
                 // Set to camera target node to "start"
@@ -219,7 +237,7 @@ impl Scene for GamePlayScene {
             }
             GamePlayState::Playing => {
                 self.update_camera_position();
-
+                
                 self.player.update(ctx, &self.image_assets);
                 // Update active enemy and remove inactive enemy
                 self.enemy_manager
@@ -241,7 +259,7 @@ impl Scene for GamePlayScene {
                 BulletPool::spawn_bullets_from_queue(&self.image_assets);
 
                 // Check GameOver game state
-                if !self.player.alive() {
+                if self.player.alive() == false {
                     self.state = GamePlayState::GameOver;
                 }
 
@@ -253,8 +271,9 @@ impl Scene for GamePlayScene {
 
                 {
                     let mut play_sound_nodes = crate::PLAY_SOUND_NODES.lock().unwrap();
-                    for (path, volume) in play_sound_nodes.values() {
-                        Self::play_sound(ctx, path, *volume);
+                    for (_, (path, volume)) in play_sound_nodes.iter()
+                    {
+                        GamePlayScene::play_sound(ctx, path, *volume);
                     }
                     play_sound_nodes.clear();
                 }
@@ -287,13 +306,16 @@ impl Scene for GamePlayScene {
                 BulletPool::update_active_enemies_bullets();
                 BulletPool::update_active_player_bullets();
 
-                if input::is_key_released(ctx, Key::Z) {
-                    if self.bgm.is_some() {
+                if input::is_key_released(ctx, Key::Z)
+                {
+                    if self.bgm.is_some()
+                    {
                         self.bgm.as_mut().unwrap().stop();
                     }
 
-                    return Ok(Transition::Replace(Box::new(Self::new(ctx)?)));
+                    return Ok(Transition::Replace(Box::new(GamePlayScene::new(ctx)?)));
                 }
+                
             }
         }
 
@@ -304,71 +326,80 @@ impl Scene for GamePlayScene {
         graphics::set_transform_matrix(ctx, self.camera.as_matrix());
         graphics::clear(ctx, Color::rgb8(255, 241, 232));
 
+        let bg_key = String::from("bg");
         for (_, camera_node) in self.level.all_nodes().iter() {
-            if let Some(bg) = self.image_assets.get("bg") {
-                graphics::draw(
-                    ctx,
-                    bg,
-                    camera_node.position
-                        - Vec2::new((bg.width() / 2) as f32, (bg.height() / 2) as f32),
-                );
+            match self.image_assets.get(&bg_key) {
+                Some(bg) => {
+                    graphics::draw(
+                        ctx,
+                        bg,
+                        camera_node.position
+                            - Vec2::new((bg.width() / 2) as f32, (bg.height() / 2) as f32),
+                    );
+                }
+                None => (),
             };
         }
 
-        if let GamePlayState::Playing = self.state {
-            self.ui.draw_intro(
-                ctx,
-                Vec2::new(crate::SCREEN_WIDTH * -0.2, -crate::SCREEN_HEIGHT * 0.6),
-            );
-            self.ui.draw_warning(
-                ctx,
-                Vec2::new(crate::SCREEN_WIDTH * 4.0, -crate::SCREEN_HEIGHT * 0.6),
-            );
+        match self.state
+        {
+            GamePlayState::Playing => {
+                self.ui.draw_intro(ctx, Vec2::new(crate::SCREEN_WIDTH * -0.2, -crate::SCREEN_HEIGHT * 0.6));
+                self.ui.draw_warning(ctx, Vec2::new(crate::SCREEN_WIDTH * 4.0, -crate::SCREEN_HEIGHT * 0.6));
+            },
+            _ => ()
         };
+        
 
         self.particle_manager
-            .draw(&ParticleDrawLayer::Bottomest, ctx, &self.image_assets);
+            .draw(ParticleDrawLayer::Bottomest, ctx, &self.image_assets);
 
         self.enemy_manager.draw(ctx, &self.image_assets);
 
         self.particle_manager
-            .draw(&ParticleDrawLayer::Explosion, ctx, &self.image_assets);
+            .draw(ParticleDrawLayer::Explosion, ctx, &self.image_assets);
 
         self.player.draw(ctx, &self.image_assets);
 
         self.particle_manager
-            .draw(&ParticleDrawLayer::BulletHit, ctx, &self.image_assets);
+            .draw(ParticleDrawLayer::BulletHit, ctx, &self.image_assets);
 
         self.particle_manager
-            .draw(&ParticleDrawLayer::FiringBullet, ctx, &self.image_assets);
+            .draw(ParticleDrawLayer::FiringBullet, ctx, &self.image_assets);
 
         BulletPool::draw_active_player_bullets(ctx, &mut self.image_assets);
         BulletPool::draw_active_enemies_bullets(ctx, &mut self.image_assets);
 
         self.particle_manager
-            .draw(&ParticleDrawLayer::Topest, ctx, &self.image_assets);
+            .draw(ParticleDrawLayer::Topest, ctx, &self.image_assets);
         self.ui.draw_crosshair(
             ctx,
-            &self.image_assets,
+            &mut self.image_assets,
             self.player.get_weapon_type(),
-            *self.player.get_crosshair_position(),
+            self.player.get_crosshair_position(),
         );
         graphics::reset_transform_matrix(ctx);
 
-        self.ui
-            .draw_energy_bar(ctx, &self.image_assets, self.player.get_health_percentage());
+        self.ui.draw_energy_bar(
+            ctx,
+            &mut self.image_assets,
+            self.player.get_health_percentage(),
+        );
 
         self.ui
-            .draw_weapon(ctx, &self.image_assets, self.player.get_weapon_type());
+            .draw_weapon(ctx, &mut self.image_assets, self.player.get_weapon_type());
 
-        match self.state {
+        match self.state
+        {
             GamePlayState::GameOver => {
                 self.ui.draw_game_over(ctx);
-            }
+            },
             GamePlayState::LevelCleared => {
                 self.ui.draw_level_cleared(ctx);
             }
-            _ => {}
+            _ => {
+                
+            }
         };
     }
 }
@@ -378,7 +409,7 @@ impl GamePlayScene {
     fn update_camera_position(&mut self) {
         self.camera.update();
 
-        if !self.reach_camera_target {
+        if self.reach_camera_target == false {
             let move_speed = 2.0;
             let camera_target_position = self.camera_target_position;
 
@@ -409,26 +440,31 @@ impl GamePlayScene {
 
     fn fetching_next_camera_target(&mut self) {
         // Go next node if possible
-        if self.reach_camera_target
-            && !self.enemy_manager.has_active_enemy()
-            && self.level.is_spawn_queue_empty()
-        {
-            if self.waiting_time == 0 {
-                if let Some(node) = self.level.get_next_node() {
-                    self.camera_target_position = node.position;
-                    self.reach_camera_target = false;
-                    let next_node_name = node.name.clone();
-                    self.waiting_time = node.waiting_time;
+        if self.reach_camera_target == true {
+            if self.enemy_manager.has_active_enemy() == false
+                && self.level.is_spawn_queue_empty() == true
+            {
+                if self.waiting_time == 0 {
+                    match self.level.get_next_node() {
+                        Some(node) => {
+                            self.camera_target_position = node.position;
+                            self.reach_camera_target = false;
+                            let next_node_name = String::from(node.name.as_str());
+                            self.waiting_time = node.waiting_time;
 
-                    self.level.set_current_node(&next_node_name);
+                            self.level.set_current_node(&next_node_name);
+                        }
+                        None => {
+                            self.level.set_current_node("");
+                            self.waiting_time = 1500;
+                        }
+                    };
                 } else {
-                    self.level.set_current_node("");
-                    self.waiting_time = 1500;
-                };
-            } else {
-                self.waiting_time = self
-                    .waiting_time
-                    .saturating_sub(crate::ONE_FRAME.as_millis());
+                    match self.waiting_time.checked_sub(crate::ONE_FRAME.as_millis()) {
+                        Some(v) => self.waiting_time = v,
+                        None => self.waiting_time = 0,
+                    };
+                }
             }
         }
     }
@@ -440,15 +476,17 @@ impl GamePlayScene {
                 return;
             }
             WeaponType::Melee => {
-                if !player.is_attacking() {
+                if player.is_attacking() == false {
                     return;
                 }
             }
         }
 
-        for bullet in &mut bullet_pool.enemy_active_bullets {
+        for bullet in bullet_pool.enemy_active_bullets.iter_mut() {
             if bullet.active {
-                if !crate::gameplay::utils::is_inside_camera_area(bullet.position, bullet.radius) {
+                if crate::gameplay::utils::is_inside_camera_area(&bullet.position, bullet.radius)
+                    == false
+                {
                     continue;
                 }
 
@@ -458,17 +496,20 @@ impl GamePlayScene {
                 if distance < total_radius * total_radius {
                     bullet.health = 0;
 
-                    if let Some(name) = bullet.extra.get("kill_animation") {
-                        let random_size = 8.0;
-                        let random_position = Vec2::new(
-                            random_size / 2.0 - random::<f32>() * random_size,
-                            random_size / 2.0 - random::<f32>() * random_size,
-                        );
+                    match bullet.extra.get("kill_animation") {
+                        Some(name) => {
+                            let random_size = 8.0;
+                            let random_position = Vec2::new(
+                                random_size / 2.0 - random::<f32>() * random_size,
+                                random_size / 2.0 - random::<f32>() * random_size,
+                            );
 
-                        Bullet::spawn_hitting_particle(
-                            bullet.position + random_position,
-                            format!("idle_animation={}|flip_x=0|", name).as_str(),
-                        );
+                            Bullet::spawn_hitting_particle(
+                                bullet.position + random_position,
+                                format!("idle_animation={}|flip_x=0|", name).as_str(),
+                            );
+                        }
+                        None => (),
                     };
                 }
             }
@@ -484,7 +525,7 @@ impl GamePlayScene {
                 return;
             }
             WeaponType::Melee => {
-                if !player.is_attacking() {
+                if player.is_attacking() == false {
                     return;
                 }
             }
@@ -492,7 +533,9 @@ impl GamePlayScene {
 
         for enemy in active_enemies.iter_mut() {
             if enemy.active {
-                if !crate::gameplay::utils::is_inside_camera_area(enemy.position, enemy.radius) {
+                if crate::gameplay::utils::is_inside_camera_area(&enemy.position, enemy.radius)
+                    == false
+                {
                     continue;
                 }
 
@@ -506,7 +549,7 @@ impl GamePlayScene {
 
                 if distance < total_radius * total_radius {
                     let hit_position = enemy.position;
-                    enemy.get_hit(hit_position, Player::melee_attack_damage());
+                    enemy.get_hit(&hit_position, player.melee_attack_damage());
                     player.melee_attack_hit_enemy();
                 }
             }
@@ -516,17 +559,19 @@ impl GamePlayScene {
     fn update_hit_check_between_player_bullet_and_enemies(active_enemies: &mut Vec<Enemy>) {
         let mut bullet_pool = crate::BULLET_POOL.lock().unwrap();
 
-        for bullet in &mut bullet_pool.player_active_bullets {
+        for bullet in bullet_pool.player_active_bullets.iter_mut() {
             for enemy in active_enemies.iter_mut() {
-                if bullet.active && enemy.active {
-                    if !crate::gameplay::utils::is_inside_camera_area(
-                        bullet.position,
+                if bullet.active == true && enemy.active {
+                    if crate::gameplay::utils::is_inside_camera_area(
+                        &bullet.position,
                         bullet.radius,
-                    ) {
+                    ) == false
+                    {
                         break;
                     }
 
-                    if !crate::gameplay::utils::is_inside_camera_area(enemy.position, enemy.radius)
+                    if crate::gameplay::utils::is_inside_camera_area(&enemy.position, enemy.radius)
+                        == false
                     {
                         continue;
                     }
@@ -535,7 +580,7 @@ impl GamePlayScene {
                     {
                         let checking_position = bullet.position;
 
-                        let result = enemy.hit_check(checking_position, bullet.radius);
+                        let result = enemy.hit_check(&checking_position, bullet.radius);
 
                         if result == 1 || result == -1 {
                             bullet.health -= 1;
@@ -546,42 +591,42 @@ impl GamePlayScene {
                                 bullet.rotation
                             };
 
-                            if let Some(name) = bullet.extra.get("hit_animation") {
-                                let random_size = 8.0;
-                                let random_position = Vec2::new(
-                                    random_size / 2.0 - random::<f32>() * random_size,
-                                    random_size / 2.0 - random::<f32>() * random_size,
-                                );
+                            match bullet.extra.get("hit_animation") {
+                                Some(name) => {
+                                    let random_size = 8.0;
+                                    let random_position = Vec2::new(
+                                        random_size / 2.0 - random::<f32>() * random_size,
+                                        random_size / 2.0 - random::<f32>() * random_size,
+                                    );
 
-                                let flip_x = if bullet_rotation > 0.25 && bullet_rotation < 0.75 {
-                                    "flip_x=1"
-                                } else {
-                                    "flip_x=0"
-                                };
+                                    let flip_x = if bullet_rotation > 0.25 && bullet_rotation < 0.75
+                                    {
+                                        "flip_x=1"
+                                    } else {
+                                        "flip_x=0"
+                                    };
 
-                                Bullet::spawn_hitting_particle(
-                                    bullet.position + random_position,
-                                    format!("idle_animation={}|{}|", name, flip_x).as_str(),
-                                );
+                                    Bullet::spawn_hitting_particle(
+                                        bullet.position + random_position,
+                                        format!("idle_animation={}|{}|", name, flip_x).as_str(),
+                                    );
+                                }
+                                None => (),
                             };
 
                             if result == 1 {
-                                enemy.get_hit(checking_position, bullet.damage);
+                                enemy.get_hit(&checking_position, bullet.damage);
 
                                 {
                                     let sfx_list = ["bullet_hit_1", "bullet_hit_2", "bullet_hit_3"];
 
                                     let name = sfx_list[random::<usize>() % sfx_list.len()];
-                                    let mut play_sound_nodes =
-                                        crate::PLAY_SOUND_NODES.lock().unwrap();
-                                    play_sound_nodes.insert(
-                                        name.to_owned(),
-                                        (format!("./resources/sfx/{}.mp3", name), 0.15),
-                                    );
+                                    let mut play_sound_nodes = crate::PLAY_SOUND_NODES.lock().unwrap();
+                                    play_sound_nodes.insert(String::from(name), (format!("./resources/sfx/{}.mp3", name), 0.15 ) );
                                 }
                             }
 
-                            if enemy.health == 0 {
+                            if enemy.health <= 0 {
                                 enemy.active = false;
                             }
 
@@ -607,16 +652,18 @@ impl GamePlayScene {
         active_enemies: &mut Vec<Enemy>,
     ) {
         let player_hit_point_position = player.get_hit_point_position();
-        let player_hit_point_radius = Player::get_hit_point_radius();
+        let player_hit_point_radius = player.get_hit_point_radius();
 
         for enemy in active_enemies.iter_mut() {
-            if enemy.active
-                && !crate::gameplay::utils::is_inside_camera_area(enemy.position, enemy.radius)
-            {
-                continue;
+            if enemy.active {
+                if crate::gameplay::utils::is_inside_camera_area(&enemy.position, enemy.radius)
+                    == false
+                {
+                    continue;
+                }
             }
 
-            if enemy.hit_check(player_hit_point_position, player_hit_point_radius) != 0 {
+            if enemy.hit_check(&player_hit_point_position, player_hit_point_radius) != 0 {
                 player.get_hit(2);
             }
         }
@@ -626,18 +673,20 @@ impl GamePlayScene {
         let mut bullet_pool = crate::BULLET_POOL.lock().unwrap();
 
         let player_hit_point_position = player.get_hit_point_position();
-        let player_hit_point_radius = Player::get_hit_point_radius();
+        let player_hit_point_radius = player.get_hit_point_radius();
 
-        for bullet in &mut bullet_pool.enemy_active_bullets {
+        for bullet in bullet_pool.enemy_active_bullets.iter_mut() {
             if bullet.active {
-                if !crate::gameplay::utils::is_inside_camera_area(bullet.position, bullet.radius) {
+                if crate::gameplay::utils::is_inside_camera_area(&bullet.position, bullet.radius)
+                    == false
+                {
                     continue;
                 }
 
                 let mut break_loop = false;
                 {
                     let checking_position = bullet.position;
-
+                    
                     let distance = crate::gameplay::utils::distance_sqr(
                         player_hit_point_position.x as i128,
                         player_hit_point_position.y as i128,
@@ -655,23 +704,26 @@ impl GamePlayScene {
                             bullet.rotation
                         };
 
-                        if let Some(name) = bullet.extra.get("hit_animation") {
-                            let random_size = 8.0;
-                            let random_position = Vec2::new(
-                                random_size / 2.0 - random::<f32>() * random_size,
-                                random_size / 2.0 - random::<f32>() * random_size,
-                            );
+                        match bullet.extra.get("hit_animation") {
+                            Some(name) => {
+                                let random_size = 8.0;
+                                let random_position = Vec2::new(
+                                    random_size / 2.0 - random::<f32>() * random_size,
+                                    random_size / 2.0 - random::<f32>() * random_size,
+                                );
 
-                            let flip_x = if bullet_rotation > 0.25 && bullet_rotation < 0.75 {
-                                "flip_x=1"
-                            } else {
-                                "flip_x=0"
-                            };
+                                let flip_x = if bullet_rotation > 0.25 && bullet_rotation < 0.75 {
+                                    "flip_x=1"
+                                } else {
+                                    "flip_x=0"
+                                };
 
-                            Bullet::spawn_hitting_particle(
-                                bullet.position + random_position,
-                                format!("idle_animation={}|{}|", name, flip_x).as_str(),
-                            );
+                                Bullet::spawn_hitting_particle(
+                                    bullet.position + random_position,
+                                    format!("idle_animation={}|{}|", name, flip_x).as_str(),
+                                );
+                            }
+                            None => (),
                         };
 
                         player.get_hit(1);
@@ -713,26 +765,28 @@ impl GamePlayScene {
         }
         // Check level cleared game state.
         else if need_to_spawn_enemy_list.len() == 0
-            && self.level.is_spawn_queue_empty()
-            && !self.enemy_manager.has_active_enemy()
-            && self.level.get_current_node().is_none()
+            && self.level.is_spawn_queue_empty() == true
+            && self.enemy_manager.has_active_enemy() == false
+            && self.level.get_current_node().is_none() == true
         {
             self.state = GamePlayState::LevelCleared;
         }
     }
 
     fn call_hit_checks(&mut self) {
-        Self::update_hit_check_between_player_bullet_and_enemies(
+        GamePlayScene::update_hit_check_between_player_bullet_and_enemies(
             self.enemy_manager.get_mut_active_enemy(),
         );
-        Self::update_hit_check_between_player_and_enemies(
+        GamePlayScene::update_hit_check_between_player_and_enemies(
             &mut self.player,
             self.enemy_manager.get_mut_active_enemy(),
         );
-        Self::update_hit_check_between_player_and_enemies_bullets(&mut self.player);
+        GamePlayScene::update_hit_check_between_player_and_enemies_bullets(&mut self.player);
 
-        Self::update_hit_check_between_player_melee_attack_with_enemies_bullets(&mut self.player);
-        Self::update_hit_check_between_player_melee_attack_with_enemies(
+        GamePlayScene::update_hit_check_between_player_melee_attack_with_enemies_bullets(
+            &mut self.player,
+        );
+        GamePlayScene::update_hit_check_between_player_melee_attack_with_enemies(
             &mut self.player,
             self.enemy_manager.get_mut_active_enemy(),
         );
@@ -747,7 +801,7 @@ fn setup_level_for_spawning_enemies(level: &mut Level) {
 fn setup_camera_target_nodes(level: &mut Level) {
     let mut pos_x = 0.0;
     {
-        let spawn_pattern = VecDeque::new();
+        let mut spawn_pattern = VecDeque::new();
 
         level.add_camera_target_node(
             "start",
@@ -763,7 +817,7 @@ fn setup_camera_target_nodes(level: &mut Level) {
         let mut spawn_pattern = VecDeque::new();
         spawn_pattern.push_back(PatternNode {
             delay: 500,
-            pattern: "01".to_owned(),
+            pattern: String::from("01"),
         });
 
         level.add_camera_target_node(
@@ -780,7 +834,7 @@ fn setup_camera_target_nodes(level: &mut Level) {
         let mut spawn_pattern = VecDeque::new();
         spawn_pattern.push_back(PatternNode {
             delay: 500,
-            pattern: "02".to_owned(),
+            pattern: String::from("02"),
         });
 
         level.add_camera_target_node(
@@ -797,7 +851,7 @@ fn setup_camera_target_nodes(level: &mut Level) {
         let mut spawn_pattern = VecDeque::new();
         spawn_pattern.push_back(PatternNode {
             delay: 500,
-            pattern: "03".to_owned(),
+            pattern: String::from("03"),
         });
         level.add_camera_target_node(
             "03",
@@ -810,7 +864,7 @@ fn setup_camera_target_nodes(level: &mut Level) {
 
     pos_x += crate::SCREEN_WIDTH;
     {
-        let spawn_pattern = VecDeque::new();
+        let mut spawn_pattern = VecDeque::new();
 
         level.add_camera_target_node(
             "04",
@@ -823,7 +877,7 @@ fn setup_camera_target_nodes(level: &mut Level) {
 
     pos_x += crate::SCREEN_WIDTH;
     {
-        let spawn_pattern = VecDeque::new();
+        let mut spawn_pattern = VecDeque::new();
 
         level.add_camera_target_node(
             "05",
@@ -839,7 +893,7 @@ fn setup_camera_target_nodes(level: &mut Level) {
         let mut spawn_pattern = VecDeque::new();
         spawn_pattern.push_back(PatternNode {
             delay: 500,
-            pattern: "boss".to_owned(),
+            pattern: String::from("boss"),
         });
 
         level.add_camera_target_node(
@@ -885,17 +939,14 @@ fn setup_level_patterns(level: &mut Level) {
             pattern.push_back(EnemySpawnNode::new(
                 0,
                 0,
-                Vec2::new( crate::SCREEN_WIDTH.mul_add(0.3, pos_x) , crate::GROUND - 16.0),
+                Vec2::new( pos_x + crate::SCREEN_WIDTH * 0.3 , crate::GROUND - 16.0),
                 "spawn_time=7000|spawn_interval=100|spawn_queue=111111|idle_animation=enemy-spawner-2-idle|spawning_animation=enemy-spawner-2-spawning|scale=1.4|flip_x=1|",
             ));
 
             pattern.push_back(EnemySpawnNode::new(
                 3500,
                 2,
-                Vec2::new(
-                    crate::SCREEN_WIDTH.mul_add(0.5, pos_x),
-                    crate::GROUND - 52.0,
-                ),
+                Vec2::new(pos_x + crate::SCREEN_WIDTH * 0.5, crate::GROUND - 52.0),
                 "rotation=0.35|",
             ));
             level.add_pattern("02", pattern);
@@ -917,10 +968,7 @@ fn setup_level_patterns(level: &mut Level) {
             pattern.push_back(EnemySpawnNode::new(
                 3500,
                 2,
-                Vec2::new(
-                    crate::SCREEN_WIDTH.mul_add(0.6, pos_x),
-                    crate::GROUND - 52.0,
-                ),
+                Vec2::new(pos_x + crate::SCREEN_WIDTH * 0.6, crate::GROUND - 52.0),
                 "rotation=0.4|",
             ));
 
@@ -930,6 +978,8 @@ fn setup_level_patterns(level: &mut Level) {
                 Vec2::new(pos_x - crate::SCREEN_WIDTH * 0.5, crate::GROUND - 52.0),
                 "rotation=0.2|",
             ));
+
+            
 
             level.add_pattern("03", pattern);
         }
@@ -945,7 +995,7 @@ fn setup_level_patterns(level: &mut Level) {
             pattern.push_back(EnemySpawnNode::new(
                 4500,
                 3,
-                Vec2::new(pos_x + crate::SCREEN_WIDTH, crate::GROUND - 120.0),
+                Vec2::new( pos_x + crate::SCREEN_WIDTH , crate::GROUND - 120.0),
                 "",
             ));
 
@@ -1171,350 +1221,381 @@ fn setup_textures(image_assets: &mut ImageAssets) {
 }
 
 fn setup_animations(image_assets: &mut ImageAssets) {
-    let animations = vec![
-        (
-            "enemy-boss-idle",
-            vec![
-                "enemy-boss-idle-1".to_string(),
-                "enemy-boss-idle-2".to_string(),
-                "enemy-boss-idle-3".to_string(),
-                "enemy-boss-idle-4".to_string(),
-                "enemy-boss-idle-5".to_string(),
-                "enemy-boss-idle-6".to_string(),
-                "enemy-boss-idle-7".to_string(),
-                "enemy-boss-idle-8".to_string(),
-                "enemy-boss-idle-9".to_string(),
-            ],
-            18,
-        ),
-        (
-            "enemy-crawler-idle",
-            vec![
-                "enemy-crawler-idle-1".to_string(),
-                "enemy-crawler-idle-2".to_string(),
-                "enemy-crawler-idle-3".to_string(),
-                "enemy-crawler-idle-4".to_string(),
-                "enemy-crawler-idle-5".to_string(),
-                "enemy-crawler-idle-6".to_string(),
-                "enemy-crawler-idle-7".to_string(),
-                "enemy-crawler-idle-8".to_string(),
-                "enemy-crawler-idle-9".to_string(),
-            ],
-            18,
-        ),
-        (
-            "enemy-crawler-air",
-            vec![
-                "enemy-crawler-air-1".to_string(),
-                "enemy-crawler-air-2".to_string(),
-                "enemy-crawler-air-3".to_string(),
-                "enemy-crawler-air-4".to_string(),
-                "enemy-crawler-air-5".to_string(),
-                "enemy-crawler-air-6".to_string(),
-                "enemy-crawler-air-7".to_string(),
-            ],
-            18,
-        ),
-        (
-            "enemy-spawner-2-idle",
-            vec!["enemy-spawner-2-idle-1".to_string()],
-            1,
-        ),
-        (
-            "enemy-spawner-2-spawning",
-            vec![
-                "enemy-spawner-2-spawning-1".to_string(),
-                "enemy-spawner-2-spawning-2".to_string(),
-                "enemy-spawner-2-spawning-3".to_string(),
-                "enemy-spawner-2-spawning-4".to_string(),
-            ],
-            18,
-        ),
-        (
-            "enemy-spawner-1-idle",
-            vec![
-                "enemy-spawner-1-idle-1".to_string(),
-                "enemy-spawner-1-idle-2".to_string(),
-                "enemy-spawner-1-idle-3".to_string(),
-                "enemy-spawner-1-idle-4".to_string(),
-            ],
-            18,
-        ),
-        (
-            "enemy-spawner-1-spawning",
-            vec![
-                "enemy-spawner-1-spawning-1".to_string(),
-                "enemy-spawner-1-spawning-2".to_string(),
-                "enemy-spawner-1-spawning-3".to_string(),
-                "enemy-spawner-1-spawning-4".to_string(),
-            ],
-            18,
-        ),
-        (
-            "enemy-flying-idle",
-            vec![
-                "enemy-flying-idle-1".to_string(),
-                "enemy-flying-idle-2".to_string(),
-                "enemy-flying-idle-3".to_string(),
-                "enemy-flying-idle-4".to_string(),
-                "enemy-flying-idle-5".to_string(),
-                "enemy-flying-idle-6".to_string(),
-                "enemy-flying-idle-7".to_string(),
-                "enemy-flying-idle-8".to_string(),
-            ],
-            18,
-        ),
-        (
-            "enemy-flying-spawn",
-            vec![
-                "enemy-flying-spawn-1".to_string(),
-                "enemy-flying-spawn-2".to_string(),
-                "enemy-flying-spawn-3".to_string(),
-                "enemy-flying-spawn-4".to_string(),
-                "enemy-flying-spawn-5".to_string(),
-                "enemy-flying-spawn-6".to_string(),
-                "enemy-flying-spawn-7".to_string(),
-                "enemy-flying-spawn-8".to_string(),
-                "enemy-flying-spawn-9".to_string(),
-                "enemy-flying-spawn-10".to_string(),
-            ],
-            12,
-        ),
-        (
-            "splash-1",
-            vec![
-                "splash-1-1".to_string(),
-                "splash-1-2".to_string(),
-                "splash-1-3".to_string(),
-                "splash-1-4".to_string(),
-                "splash-1-5".to_string(),
-                "splash-1-6".to_string(),
-            ],
-            18,
-        ),
-        (
-            "splash-2",
-            vec![
-                "splash-2-1".to_string(),
-                "splash-2-2".to_string(),
-                "splash-2-3".to_string(),
-                "splash-2-4".to_string(),
-                "splash-2-5".to_string(),
-                "splash-2-6".to_string(),
-            ],
-            18,
-        ),
-        (
-            "splash-3",
-            vec![
-                "splash-3-1".to_string(),
-                "splash-3-2".to_string(),
-                "splash-3-3".to_string(),
-                "splash-3-4".to_string(),
-                "splash-3-5".to_string(),
-                "splash-3-6".to_string(),
-                "splash-3-7".to_string(),
-            ],
-            18,
-        ),
-        (
-            "splash-4",
-            vec![
-                "splash-4-1".to_string(),
-                "splash-4-2".to_string(),
-                "splash-4-3".to_string(),
-                "splash-4-4".to_string(),
-                "splash-4-5".to_string(),
-                "splash-4-6".to_string(),
-                "splash-4-7".to_string(),
-                "splash-4-8".to_string(),
-                "splash-4-9".to_string(),
-            ],
-            18,
-        ),
-        (
-            "enemy-bullet-1-idle",
-            vec![
-                "enemy-bullet-1-idle-1".to_string(),
-                "enemy-bullet-1-idle-2".to_string(),
-                "enemy-bullet-1-idle-3".to_string(),
-                "enemy-bullet-1-idle-4".to_string(),
-            ],
-            18,
-        ),
-        (
-            "enemy-bullet-1-hit",
-            vec![
-                "enemy-bullet-1-hit-1".to_string(),
-                "enemy-bullet-1-hit-2".to_string(),
-                "enemy-bullet-1-hit-3".to_string(),
-                "enemy-bullet-1-hit-4".to_string(),
-            ],
-            14,
-        ),
-        (
-            "enemy-bullet-1-firing",
-            vec![
-                "enemy-bullet-1-firing-1".to_string(),
-                "enemy-bullet-1-firing-2".to_string(),
-            ],
-            18,
-        ),
-        (
-            "enemy-bullet-1-kill",
-            vec![
-                "enemy-bullet-1-kill-1".to_string(),
-                "enemy-bullet-1-kill-2".to_string(),
-                "enemy-bullet-1-kill-3".to_string(),
-            ],
-            14,
-        ),
-        (
-            "player-run",
-            vec![
-                "player-run-1".to_string(),
-                "player-run-2".to_string(),
-                "player-run-3".to_string(),
-                "player-run-4".to_string(),
-                "player-run-5".to_string(),
-                "player-run-6".to_string(),
-                "player-run-7".to_string(),
-                "player-run-8".to_string(),
-                "player-run-9".to_string(),
-                "player-run-10".to_string(),
-                "player-run-11".to_string(),
-            ],
-            18,
-        ),
-        (
-            "player-slash",
-            vec![
-                "player-slash-1".to_string(),
-                "player-slash-2".to_string(),
-                "player-slash-2".to_string(),
-                "player-slash-3".to_string(),
-                "player-slash-4".to_string(),
-                "player-slash-5".to_string(),
-                "player-slash-6".to_string(),
-            ],
-            14,
-        ),
-        (
-            "player-stand",
-            vec![
-                "player-stand-1".to_string(),
-                "player-stand-2".to_string(),
-                "player-stand-3".to_string(),
-                "player-stand-4".to_string(),
-            ],
-            18,
-        ),
-        (
-            "player-jump",
-            vec![
-                "player-jump-1".to_string(),
-                "player-jump-2".to_string(),
-                "player-jump-3".to_string(),
-                "player-jump-4".to_string(),
-                "player-jump-5".to_string(),
-            ],
-            18,
-        ),
-        (
-            "player-die",
-            vec![
-                "player-die-1".to_string(),
-                "player-die-2".to_string(),
-                "player-die-3".to_string(),
-                "player-die-4".to_string(),
-                "player-die-5".to_string(),
-                "player-die-6".to_string(),
-                "player-die-7".to_string(),
-                "player-die-8".to_string(),
-                "player-die-9".to_string(),
-            ],
-            18,
-        ),
-        (
-            "player-bullet-idle",
-            vec![
-                "player-bullet-idle-1".to_string(),
-                "player-bullet-idle-2".to_string(),
-                "player-bullet-idle-3".to_string(),
-                "player-bullet-idle-4".to_string(),
-            ],
-            18,
-        ),
-        (
-            "player-bullet-hit",
-            vec![
-                "player-bullet-hit-1".to_string(),
-                "player-bullet-hit-2".to_string(),
-                "player-bullet-hit-3".to_string(),
-            ],
-            18,
-        ),
-        (
-            "player-bullet-firing",
-            vec![
-                "player-bullet-firing-1".to_string(),
-                "player-bullet-firing-2".to_string(),
-                "player-bullet-firing-3".to_string(),
-            ],
-            18,
-        ),
-        (
-            "ui-circle",
-            vec![
-                "ui-circle-1".to_string(),
-                "ui-circle-2".to_string(),
-                "ui-circle-3".to_string(),
-                "ui-circle-4".to_string(),
-                "ui-circle-5".to_string(),
-                "ui-circle-6".to_string(),
-                "ui-circle-7".to_string(),
-                "ui-circle-8".to_string(),
-            ],
-            24,
-        ),
-        (
-            "ui-z",
-            vec![
-                "ui-z-1".to_string(),
-                "ui-z-2".to_string(),
-                "ui-z-3".to_string(),
-                "ui-z-4".to_string(),
-            ],
-            24,
-        ),
-        ("ui-weapon-melee", vec!["ui-weapon-melee".to_string()], 1),
-        ("ui-weapon-range", vec!["ui-weapon-range".to_string()], 1),
-        (
-            "ui-bar",
-            vec![
-                "ui-bar-1".to_string(),
-                "ui-bar-2".to_string(),
-                "ui-bar-3".to_string(),
-                "ui-bar-4".to_string(),
-            ],
-            18,
-        ),
-        (
-            "ui-crosshair",
-            vec![
-                "ui-crosshair-1".to_string(),
-                "ui-crosshair-2".to_string(),
-                "ui-crosshair-3".to_string(),
-                "ui-crosshair-4".to_string(),
-            ],
-            24,
-        ),
-        (
-            "ui-crosshair-inactive",
-            vec!["ui-crosshair-inactive".to_string()],
-            1,
-        ),
-    ];
+    let mut animations = vec![];
+
+    animations.push((
+        "enemy-boss-idle",
+        vec![
+            "enemy-boss-idle-1".to_string(),
+            "enemy-boss-idle-2".to_string(),
+            "enemy-boss-idle-3".to_string(),
+            "enemy-boss-idle-4".to_string(),
+            "enemy-boss-idle-5".to_string(),
+            "enemy-boss-idle-6".to_string(),
+            "enemy-boss-idle-7".to_string(),
+            "enemy-boss-idle-8".to_string(),
+            "enemy-boss-idle-9".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "enemy-crawler-idle",
+        vec![
+            "enemy-crawler-idle-1".to_string(),
+            "enemy-crawler-idle-2".to_string(),
+            "enemy-crawler-idle-3".to_string(),
+            "enemy-crawler-idle-4".to_string(),
+            "enemy-crawler-idle-5".to_string(),
+            "enemy-crawler-idle-6".to_string(),
+            "enemy-crawler-idle-7".to_string(),
+            "enemy-crawler-idle-8".to_string(),
+            "enemy-crawler-idle-9".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "enemy-crawler-air",
+        vec![
+            "enemy-crawler-air-1".to_string(),
+            "enemy-crawler-air-2".to_string(),
+            "enemy-crawler-air-3".to_string(),
+            "enemy-crawler-air-4".to_string(),
+            "enemy-crawler-air-5".to_string(),
+            "enemy-crawler-air-6".to_string(),
+            "enemy-crawler-air-7".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "enemy-spawner-2-idle",
+        vec!["enemy-spawner-2-idle-1".to_string()],
+        1,
+    ));
+
+    animations.push((
+        "enemy-spawner-2-spawning",
+        vec![
+            "enemy-spawner-2-spawning-1".to_string(),
+            "enemy-spawner-2-spawning-2".to_string(),
+            "enemy-spawner-2-spawning-3".to_string(),
+            "enemy-spawner-2-spawning-4".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "enemy-spawner-1-idle",
+        vec![
+            "enemy-spawner-1-idle-1".to_string(),
+            "enemy-spawner-1-idle-2".to_string(),
+            "enemy-spawner-1-idle-3".to_string(),
+            "enemy-spawner-1-idle-4".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "enemy-spawner-1-spawning",
+        vec![
+            "enemy-spawner-1-spawning-1".to_string(),
+            "enemy-spawner-1-spawning-2".to_string(),
+            "enemy-spawner-1-spawning-3".to_string(),
+            "enemy-spawner-1-spawning-4".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "enemy-flying-idle",
+        vec![
+            "enemy-flying-idle-1".to_string(),
+            "enemy-flying-idle-2".to_string(),
+            "enemy-flying-idle-3".to_string(),
+            "enemy-flying-idle-4".to_string(),
+            "enemy-flying-idle-5".to_string(),
+            "enemy-flying-idle-6".to_string(),
+            "enemy-flying-idle-7".to_string(),
+            "enemy-flying-idle-8".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "enemy-flying-spawn",
+        vec![
+            "enemy-flying-spawn-1".to_string(),
+            "enemy-flying-spawn-2".to_string(),
+            "enemy-flying-spawn-3".to_string(),
+            "enemy-flying-spawn-4".to_string(),
+            "enemy-flying-spawn-5".to_string(),
+            "enemy-flying-spawn-6".to_string(),
+            "enemy-flying-spawn-7".to_string(),
+            "enemy-flying-spawn-8".to_string(),
+            "enemy-flying-spawn-9".to_string(),
+            "enemy-flying-spawn-10".to_string(),
+        ],
+        12,
+    ));
+
+    animations.push((
+        "splash-1",
+        vec![
+            "splash-1-1".to_string(),
+            "splash-1-2".to_string(),
+            "splash-1-3".to_string(),
+            "splash-1-4".to_string(),
+            "splash-1-5".to_string(),
+            "splash-1-6".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "splash-2",
+        vec![
+            "splash-2-1".to_string(),
+            "splash-2-2".to_string(),
+            "splash-2-3".to_string(),
+            "splash-2-4".to_string(),
+            "splash-2-5".to_string(),
+            "splash-2-6".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "splash-3",
+        vec![
+            "splash-3-1".to_string(),
+            "splash-3-2".to_string(),
+            "splash-3-3".to_string(),
+            "splash-3-4".to_string(),
+            "splash-3-5".to_string(),
+            "splash-3-6".to_string(),
+            "splash-3-7".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "splash-4",
+        vec![
+            "splash-4-1".to_string(),
+            "splash-4-2".to_string(),
+            "splash-4-3".to_string(),
+            "splash-4-4".to_string(),
+            "splash-4-5".to_string(),
+            "splash-4-6".to_string(),
+            "splash-4-7".to_string(),
+            "splash-4-8".to_string(),
+            "splash-4-9".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "enemy-bullet-1-idle",
+        vec![
+            "enemy-bullet-1-idle-1".to_string(),
+            "enemy-bullet-1-idle-2".to_string(),
+            "enemy-bullet-1-idle-3".to_string(),
+            "enemy-bullet-1-idle-4".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "enemy-bullet-1-hit",
+        vec![
+            "enemy-bullet-1-hit-1".to_string(),
+            "enemy-bullet-1-hit-2".to_string(),
+            "enemy-bullet-1-hit-3".to_string(),
+            "enemy-bullet-1-hit-4".to_string(),
+        ],
+        14,
+    ));
+
+    animations.push((
+        "enemy-bullet-1-firing",
+        vec![
+            "enemy-bullet-1-firing-1".to_string(),
+            "enemy-bullet-1-firing-2".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "enemy-bullet-1-kill",
+        vec![
+            "enemy-bullet-1-kill-1".to_string(),
+            "enemy-bullet-1-kill-2".to_string(),
+            "enemy-bullet-1-kill-3".to_string(),
+        ],
+        14,
+    ));
+
+    animations.push((
+        "player-run",
+        vec![
+            "player-run-1".to_string(),
+            "player-run-2".to_string(),
+            "player-run-3".to_string(),
+            "player-run-4".to_string(),
+            "player-run-5".to_string(),
+            "player-run-6".to_string(),
+            "player-run-7".to_string(),
+            "player-run-8".to_string(),
+            "player-run-9".to_string(),
+            "player-run-10".to_string(),
+            "player-run-11".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "player-slash",
+        vec![
+            "player-slash-1".to_string(),
+            "player-slash-2".to_string(),
+            "player-slash-2".to_string(),
+            "player-slash-3".to_string(),
+            "player-slash-4".to_string(),
+            "player-slash-5".to_string(),
+            "player-slash-6".to_string(),
+        ],
+        14,
+    ));
+
+    animations.push((
+        "player-stand",
+        vec![
+            "player-stand-1".to_string(),
+            "player-stand-2".to_string(),
+            "player-stand-3".to_string(),
+            "player-stand-4".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "player-jump",
+        vec![
+            "player-jump-1".to_string(),
+            "player-jump-2".to_string(),
+            "player-jump-3".to_string(),
+            "player-jump-4".to_string(),
+            "player-jump-5".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "player-die",
+        vec![
+            "player-die-1".to_string(),
+            "player-die-2".to_string(),
+            "player-die-3".to_string(),
+            "player-die-4".to_string(),
+            "player-die-5".to_string(),
+            "player-die-6".to_string(),
+            "player-die-7".to_string(),
+            "player-die-8".to_string(),
+            "player-die-9".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "player-bullet-idle",
+        vec![
+            "player-bullet-idle-1".to_string(),
+            "player-bullet-idle-2".to_string(),
+            "player-bullet-idle-3".to_string(),
+            "player-bullet-idle-4".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "player-bullet-hit",
+        vec![
+            "player-bullet-hit-1".to_string(),
+            "player-bullet-hit-2".to_string(),
+            "player-bullet-hit-3".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "player-bullet-firing",
+        vec![
+            "player-bullet-firing-1".to_string(),
+            "player-bullet-firing-2".to_string(),
+            "player-bullet-firing-3".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "ui-circle",
+        vec![
+            "ui-circle-1".to_string(),
+            "ui-circle-2".to_string(),
+            "ui-circle-3".to_string(),
+            "ui-circle-4".to_string(),
+            "ui-circle-5".to_string(),
+            "ui-circle-6".to_string(),
+            "ui-circle-7".to_string(),
+            "ui-circle-8".to_string(),
+        ],
+        24,
+    ));
+
+    animations.push((
+        "ui-z",
+        vec![
+            "ui-z-1".to_string(),
+            "ui-z-2".to_string(),
+            "ui-z-3".to_string(),
+            "ui-z-4".to_string(),
+        ],
+        24,
+    ));
+
+    animations.push(("ui-weapon-melee", vec!["ui-weapon-melee".to_string()], 1));
+
+    animations.push(("ui-weapon-range", vec!["ui-weapon-range".to_string()], 1));
+
+    animations.push((
+        "ui-bar",
+        vec![
+            "ui-bar-1".to_string(),
+            "ui-bar-2".to_string(),
+            "ui-bar-3".to_string(),
+            "ui-bar-4".to_string(),
+        ],
+        18,
+    ));
+
+    animations.push((
+        "ui-crosshair",
+        vec![
+            "ui-crosshair-1".to_string(),
+            "ui-crosshair-2".to_string(),
+            "ui-crosshair-3".to_string(),
+            "ui-crosshair-4".to_string(),
+        ],
+        24,
+    ));
+
+    animations.push((
+        "ui-crosshair-inactive",
+        vec!["ui-crosshair-inactive".to_string()],
+        1,
+    ));
 
     image_assets.load_animations(&animations);
 }

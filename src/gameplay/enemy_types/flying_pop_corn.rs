@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use rand::prelude::*;
 
+use tetra::graphics::{self, Color, GeometryBuilder, Mesh, Rectangle, ShapeStyle};
 use tetra::math::Vec2;
 use tetra::Context;
 
@@ -13,32 +14,32 @@ use crate::gameplay::enemy_manager::{Enemy, EnemyType};
 use crate::gameplay::player::Player;
 
 pub struct FlyingPopCornEnemyType {
-    _animations: HashMap<String, AnimationMultiTextures>,
+    animations: HashMap<String, AnimationMultiTextures>,
 }
 
 impl FlyingPopCornEnemyType {
-    #[must_use]
-    pub fn new(image_assets: &ImageAssets) -> Self {
+    pub fn new(image_assets: &ImageAssets) -> FlyingPopCornEnemyType {
         let mut animations = HashMap::new();
 
         let keys = [""];
 
-        for &key in &keys {
-            if let Some(mut anim) = image_assets.get_animation_object(key) {
-                anim.frame_length = Duration::from_millis(1000 / 15);
+        for key in keys.iter() {
+            match image_assets.get_animation_object(key) {
+                Some(mut anim) => {
+                    anim.frame_length = Duration::from_millis(1000 / 15);
 
-                animations.insert(key.to_owned(), anim);
-            } else {
-                println!("No animation name: {}", key)
+                    animations.insert(String::from(*key), anim);
+                }
+                None => println!("No animation name: {}", key),
             };
         }
 
-        Self {
-            _animations: animations,
+        FlyingPopCornEnemyType {
+            animations: animations,
         }
     }
 
-    fn random_target_position(enemy: &mut Enemy) {
+    fn random_target_position(&self, enemy: &mut Enemy) {
         enemy.target_position.clear();
         for _ in 0..3 {
             // enemy.target_position.push(if enemy.state % 2 == 0 {
@@ -55,7 +56,7 @@ impl FlyingPopCornEnemyType {
         }
     }
 
-    fn random_weapon_tick() -> u128 {
+    fn random_weapon_tick(&self) -> u128 {
         2500 + (random::<f32>() * 1000.0) as u128
     }
 }
@@ -72,7 +73,7 @@ impl EnemyType for FlyingPopCornEnemyType {
         enemy.health = 5;
         enemy.life_time = 100;
         enemy.maximum_tick = 3000;
-        enemy.weapon_tick = Self::random_weapon_tick();
+        enemy.weapon_tick = self.random_weapon_tick();
         if enemy.position.x
             < crate::gameplay::utils::convert_screen_position_to_world_position(Vec2::new(0.0, 0.0))
                 .x
@@ -80,31 +81,37 @@ impl EnemyType for FlyingPopCornEnemyType {
             if enemy.state % 2 == 1 {
                 enemy.state += 1;
             }
-        } else if enemy.state % 2 == 0 {
-            enemy.state += 1;
+        } else {
+            if enemy.state % 2 == 0 {
+                enemy.state += 1;
+            }
         }
 
-        if let Some(animation) = image_assets.get_animation_object("enemy-flying-spawn") {
-            enemy.sprite.scale = Vec2::new(1.4, 1.4);
-            enemy.sprite.set_loop(false);
-            enemy.sprite.play(&animation);
+        match image_assets.get_animation_object("enemy-flying-spawn") {
+            Some(animation) => {
+                enemy.sprite.scale = Vec2::new(1.4, 1.4);
+                enemy.sprite.set_loop(false);
+                enemy.sprite.play(&animation);
+            }
+            None => (),
         };
 
-        Self::random_target_position(enemy);
+        self.random_target_position(enemy);
     }
 
     fn update(&self, enemy: &mut Enemy, player: Option<&Player>, image_assets: &ImageAssets) {
-        enemy.tick = enemy
-            .tick
-            .checked_add(crate::ONE_FRAME.as_millis())
-            .unwrap_or(0);
+        match enemy.tick.checked_add(crate::ONE_FRAME.as_millis()) {
+            Some(v) => enemy.tick = v,
+            None => enemy.tick = 0,
+        };
 
-        enemy.weapon_tick = enemy
-            .weapon_tick
-            .saturating_sub(crate::ONE_FRAME.as_millis());
+        match enemy.weapon_tick.checked_sub(crate::ONE_FRAME.as_millis()) {
+            Some(v) => enemy.weapon_tick = v,
+            None => enemy.weapon_tick = 0,
+        };
 
         if enemy.weapon_tick == 0 {
-            enemy.weapon_tick = Self::random_weapon_tick();
+            enemy.weapon_tick = self.random_weapon_tick();
             Enemy::spawn_bullet(
                 enemy.position,
                 player.unwrap().get_hit_point_position(),
@@ -118,20 +125,23 @@ impl EnemyType for FlyingPopCornEnemyType {
         if enemy.sprite.get_current_animation_name() == "enemy-flying-spawn"
             && enemy.sprite.is_end_of_animation()
         {
-            if let Some(animation) = image_assets.get_animation_object("enemy-flying-idle") {
-                enemy.sprite.set_loop(true);
-                enemy.sprite.play(&animation);
+            match image_assets.get_animation_object("enemy-flying-idle") {
+                Some(animation) => {
+                    enemy.sprite.set_loop(true);
+                    enemy.sprite.play(&animation);
+                }
+                None => (),
             };
         }
 
         if enemy.tick > enemy.maximum_tick {
             enemy.state += 1;
             enemy.tick = 0;
-            Self::random_target_position(enemy);
+            self.random_target_position(enemy);
         }
 
         let mut actual_position = enemy.position;
-        for position in &enemy.target_position {
+        for position in enemy.target_position.iter() {
             actual_position = Vec2::lerp(actual_position, *position, 0.01);
         }
         enemy.position = actual_position;
@@ -143,18 +153,15 @@ impl EnemyType for FlyingPopCornEnemyType {
 
     /// This function will called internally in die().
     /// It will decide that what it should do with the bullets on screen when this enemy die
-    fn die(&self, _enemy: &mut Enemy) {
+    fn die(&self, enemy: &mut Enemy) {
         {
             let mut play_sound_nodes = crate::PLAY_SOUND_NODES.lock().unwrap();
-            play_sound_nodes.insert(
-                String::from("flying_explode"),
-                (String::from("./resources/sfx/flying_explode.mp3"), 0.6),
-            );
+            play_sound_nodes.insert(String::from("flying_explode"), (String::from("./resources/sfx/flying_explode.mp3"), 0.6 ) );
         }
     }
 
     /// Return: 0: not hit, 1: hit weakpoint, -1: hit shield. (No damage)
-    fn hit_check(&self, enemy: &Enemy, position: Vec2<f32>, radius: f32) -> i32 {
+    fn hit_check(&self, enemy: &Enemy, position: &Vec2<f32>, radius: f32) -> i32 {
         let distance = crate::gameplay::utils::distance_sqr(
             enemy.position.x as i128,
             enemy.position.y as i128,

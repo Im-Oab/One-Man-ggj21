@@ -23,18 +23,17 @@ pub struct ParticleSpawnNode {
 }
 
 impl ParticleSpawnNode {
-    #[must_use]
     pub fn new(
         particle_type_number: u128,
         position: Vec2<f32>,
         draw_layer: ParticleDrawLayer,
         extra: &str,
-    ) -> Self {
-        Self {
-            particle_type_number,
-            position,
-            draw_layer,
-            extra: extra.to_owned(),
+    ) -> ParticleSpawnNode {
+        ParticleSpawnNode {
+            particle_type_number: particle_type_number,
+            position: position,
+            draw_layer: draw_layer,
+            extra: String::from(extra),
         }
     }
 }
@@ -47,8 +46,8 @@ pub struct ParticleManager {
     remove_inactive_particle_list: Vec<usize>,
 }
 
-impl Default for ParticleManager {
-    fn default() -> Self {
+impl ParticleManager {
+    pub fn new() -> ParticleManager {
         let mut inactive_particles = Vec::new();
         for _i in 1..300 {
             inactive_particles.push(Particle::new());
@@ -56,18 +55,11 @@ impl Default for ParticleManager {
 
         clear_particle_spawn_nodes();
 
-        Self {
+        ParticleManager {
             active_particles_layer: HashMap::new(),
-            inactive_particles,
+            inactive_particles: inactive_particles,
             remove_inactive_particle_list: Vec::new(),
         }
-    }
-}
-
-impl ParticleManager {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub fn update(&mut self, image_assets: &ImageAssets) {
@@ -78,34 +70,34 @@ impl ParticleManager {
         );
 
         update_active_particles(
-            &ParticleDrawLayer::Bottomest,
+            ParticleDrawLayer::Bottomest,
             &mut self.active_particles_layer,
             &mut self.remove_inactive_particle_list,
             &mut self.inactive_particles,
         );
 
         update_active_particles(
-            &ParticleDrawLayer::Explosion,
+            ParticleDrawLayer::Explosion,
             &mut self.active_particles_layer,
             &mut self.remove_inactive_particle_list,
             &mut self.inactive_particles,
         );
 
         update_active_particles(
-            &ParticleDrawLayer::BulletHit,
+            ParticleDrawLayer::BulletHit,
             &mut self.active_particles_layer,
             &mut self.remove_inactive_particle_list,
             &mut self.inactive_particles,
         );
         update_active_particles(
-            &ParticleDrawLayer::FiringBullet,
+            ParticleDrawLayer::FiringBullet,
             &mut self.active_particles_layer,
             &mut self.remove_inactive_particle_list,
             &mut self.inactive_particles,
         );
 
         update_active_particles(
-            &ParticleDrawLayer::Topest,
+            ParticleDrawLayer::Topest,
             &mut self.active_particles_layer,
             &mut self.remove_inactive_particle_list,
             &mut self.inactive_particles,
@@ -114,46 +106,55 @@ impl ParticleManager {
 
     pub fn draw(
         &mut self,
-        draw_layer: &ParticleDrawLayer,
+        draw_layer: ParticleDrawLayer,
         ctx: &mut Context,
         image_assets: &ImageAssets,
     ) {
-        if let Some(active_particles) = self.active_particles_layer.get_mut(draw_layer) {
-            for particle in active_particles.iter_mut() {
-                particle.draw(ctx, image_assets);
+        match self.active_particles_layer.get_mut(&draw_layer) {
+            Some(active_particles) => {
+                for particle in active_particles.iter_mut() {
+                    particle.draw(ctx, image_assets);
+                }
             }
+            None => (),
         }
     }
 }
 
-pub fn update_active_particles<S: std::hash::BuildHasher>(
-    draw_layer: &ParticleDrawLayer,
-    active_particles_layer: &mut HashMap<ParticleDrawLayer, Vec<Particle>, S>,
+pub fn update_active_particles(
+    draw_layer: ParticleDrawLayer,
+    active_particles_layer: &mut HashMap<ParticleDrawLayer, Vec<Particle>>,
     remove_inactive_particle_list: &mut Vec<usize>,
     inactive_particles: &mut Vec<Particle>,
 ) {
-    if let Some(active_particles) = active_particles_layer.get_mut(draw_layer) {
-        for (index, particle) in active_particles.iter_mut().enumerate() {
-            if particle.active {
-                particle.update();
-            } else {
-                remove_inactive_particle_list.push(index);
+    match active_particles_layer.get_mut(&draw_layer) {
+        Some(active_particles) => {
+            let mut index = 0;
+            for particle in active_particles.iter_mut() {
+                if particle.active == true {
+                    particle.update();
+                } else {
+                    remove_inactive_particle_list.push(index);
+                }
+
+                index += 1;
             }
-        }
 
-        for index in remove_inactive_particle_list.iter().rev() {
-            let inactive_particle = active_particles.remove(*index);
-            inactive_particles.push(inactive_particle);
-        }
+            for index in remove_inactive_particle_list.iter().rev() {
+                let inactive_particle = active_particles.remove(*index);
+                inactive_particles.push(inactive_particle);
+            }
 
-        remove_inactive_particle_list.clear();
+            remove_inactive_particle_list.clear();
+        }
+        None => (),
     }
 }
 
 /// Fetching spawn node in the queue and create particle for active list.
-pub fn update_spawn_nodes_list<S: std::hash::BuildHasher>(
+pub fn update_spawn_nodes_list(
     inactive_particles: &mut Vec<Particle>,
-    active_particles: &mut HashMap<ParticleDrawLayer, Vec<Particle>, S>,
+    active_particles: &mut HashMap<ParticleDrawLayer, Vec<Particle>>,
     image_assets: &ImageAssets,
 ) {
     let mut particle_types = crate::PARTICLE_TYPE_BANK.lock().unwrap();
@@ -174,47 +175,52 @@ pub fn update_spawn_nodes_list<S: std::hash::BuildHasher>(
     }
 }
 
-fn spawn_particle<S: std::hash::BuildHasher>(
+fn spawn_particle(
     inactive_particles: &mut Vec<Particle>,
-    active_particles_layers: &mut HashMap<ParticleDrawLayer, Vec<Particle>, S>,
+    active_particles_layers: &mut HashMap<ParticleDrawLayer, Vec<Particle>>,
     spawn_node: &ParticleSpawnNode,
     particle_types: &mut ParticleTypeBank,
     image_assets: &ImageAssets,
 ) {
-    if !inactive_particles.is_empty() {
-        if let Some(mut new_node) = inactive_particles.pop() {
-            if !active_particles_layers.contains_key(&spawn_node.draw_layer) {
+    if inactive_particles.len() > 0 {
+        let new_node = inactive_particles.pop();
+        if new_node.is_some() {
+            if active_particles_layers.contains_key(&spawn_node.draw_layer) == false {
                 active_particles_layers.insert(spawn_node.draw_layer.clone(), Vec::new());
             }
 
             let active_particles = active_particles_layers
                 .get_mut(&spawn_node.draw_layer)
                 .unwrap();
-            if let Some(particle_type) = particle_types
+            match particle_types
                 .types
                 .get_mut(&spawn_node.particle_type_number)
             {
-                new_node.reset();
+                Some(particle_type) => {
+                    let mut new_node = new_node.unwrap();
+                    new_node.reset();
 
-                new_node.particle_type_number = particle_type.particle_type_id();
-                new_node.position = spawn_node.position;
-                new_node.active = true;
-                new_node.sprite.set_loop(false);
+                    new_node.particle_type_number = particle_type.particle_type_id();
+                    new_node.position = spawn_node.position;
+                    new_node.active = true;
+                    new_node.sprite.set_loop(false);
 
-                new_node.parsing_extra(spawn_node.extra.as_str());
+                    new_node.parsing_extra(spawn_node.extra.as_str());
 
-                match new_node.extra.get("scale") {
-                    Some(v) => {
-                        let scale = v.parse::<f32>().unwrap_or(2.5);
-                        new_node.sprite.scale = Vec2::new(scale, scale);
+                    match new_node.extra.get("scale") {
+                        Some(v) => {
+                            let scale = v.parse::<f32>().unwrap_or(2.5);
+                            new_node.sprite.scale = Vec2::new(scale, scale);
+                        }
+                        None => {
+                            new_node.sprite.scale = Vec2::new(2.5, 2.5);
+                        }
                     }
-                    None => {
-                        new_node.sprite.scale = Vec2::new(2.5, 2.5);
-                    }
+
+                    particle_type.init(&mut new_node, image_assets);
+                    active_particles.push(new_node);
                 }
-
-                particle_type.init(&mut new_node, image_assets);
-                active_particles.push(new_node);
+                None => (),
             };
         }
     }
@@ -254,9 +260,9 @@ pub struct Particle {
     pub extra: HashMap<String, String>,
 }
 
-impl Default for Particle {
-    fn default() -> Self {
-        Self {
+impl Particle {
+    pub fn new() -> Particle {
+        Particle {
             active: false,
             particle_type_number: 0,
             position: Vec2::zero(),
@@ -268,13 +274,6 @@ impl Default for Particle {
             face_right: true,
             extra: HashMap::new(),
         }
-    }
-}
-
-impl Particle {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub fn reset(&mut self) {
@@ -290,34 +289,40 @@ impl Particle {
 
     pub fn update(&mut self) {
         let particle_types = crate::PARTICLE_TYPE_BANK.lock().unwrap();
-        if let Some(particle_type) = particle_types.get(self.particle_type_number) {
-            particle_type.update(self);
+        match particle_types.get(self.particle_type_number) {
+            Some(particle_type) => {
+                particle_type.update(self);
+            }
+            None => (),
         };
     }
 
     pub fn draw(&mut self, ctx: &mut Context, image_assets: &ImageAssets) {
         let particle_types = crate::PARTICLE_TYPE_BANK.lock().unwrap();
-        if let Some(particle_type) = particle_types.get(self.particle_type_number) {
-            particle_type.draw(ctx, self, image_assets);
+        match particle_types.get(self.particle_type_number) {
+            Some(particle_type) => {
+                particle_type.draw(ctx, self, image_assets);
+            }
+            None => (),
         };
     }
 
     pub fn parsing_extra(&mut self, raw_extra: &str) {
-        if raw_extra.is_empty() {
+        if raw_extra.len() == 0 {
             return;
         }
 
         let split: Vec<&str> = raw_extra.split('|').collect();
 
-        for text in &split {
-            if text.is_empty() {
+        for text in split.iter() {
+            if text.len() == 0 {
                 continue;
             }
 
             let parameter: Vec<&str> = text.split('=').collect();
             if parameter.len() == 2 {
                 self.extra
-                    .insert(parameter[0].to_owned(), parameter[1].to_owned());
+                    .insert(String::from(parameter[0]), String::from(parameter[1]));
             } else {
                 panic!("Incorrect parameter format: {} ({})", text, raw_extra);
             }
@@ -333,19 +338,19 @@ pub trait ParticleType {
 }
 
 /// Keep all particle types that use in current scene.
-#[derive(Default)]
 pub struct ParticleTypeBank {
     pub types: HashMap<u128, Box<dyn ParticleType + Send + Sync>>,
 }
 
 impl ParticleTypeBank {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new() -> ParticleTypeBank {
+        ParticleTypeBank {
+            types: HashMap::new(),
+        }
     }
 
-    pub fn get(&self, number: u128) -> Option<&(dyn ParticleType + Send + Sync)> {
-        self.types.get(&number).map(Box::as_ref)
+    pub fn get(&self, number: u128) -> Option<&Box<dyn ParticleType + Send + Sync>> {
+        self.types.get(&number)
     }
 
     pub fn add(&mut self, number: u128, particle_type: Box<dyn ParticleType + Send + Sync>) {
