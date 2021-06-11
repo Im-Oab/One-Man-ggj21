@@ -9,7 +9,6 @@ This README would normally document whatever steps are necessary to get your app
 - It has only 1 level and 3 enemy types.
 - This game support only OSX and Windows.
 
-![preview](https://github.com/Im-Oab/One-Man-ggj21/blob/main/preview.gif?raw=true)
 
 
 ### How do I get set up? ###
