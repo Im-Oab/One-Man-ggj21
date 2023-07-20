@@ -7,6 +7,7 @@ pub trait Input {
     fn left(&self) -> bool;
     fn right(&self) -> bool;
     fn attack(&self) -> bool;
+    fn attack_holding(&self) -> u128;
     fn switch(&self) -> bool;
     fn update(&mut self, ctx: &mut Context);
 }
@@ -63,6 +64,10 @@ impl Input for Keyboard {
 
     fn attack(&self) -> bool {
         self.attack_key.hold_time < 50 && self.attack_key.idle_time == 0
+    }
+
+    fn attack_holding(&self) -> u128 {
+        self.attack_key.hold_time
     }
 
     fn switch(&self) -> bool {

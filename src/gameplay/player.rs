@@ -42,6 +42,7 @@ pub struct Player {
     jump_speed: u128,
     fall_time: u128,
     falling_slow_time: u128,
+    dash_speed: i32,
 
     /// Weapon
     weapon_type: WeaponType,
@@ -52,6 +53,8 @@ pub struct Player {
     range_attack_time: u128,
     range_attack_cooldown: u128,
     crosshair_position: Vec2<f32>,
+
+
 }
 
 impl Player {
@@ -82,6 +85,7 @@ impl Player {
             jump_speed: 0,
             fall_time: 0,
             falling_slow_time: 0,
+            dash_speed: 0,
 
             weapon_type: WeaponType::Melee,
             melee_attack_time: 0,
@@ -151,7 +155,7 @@ impl Player {
     }
 
     pub fn get_hit(&mut self, damage: u32) {
-        if self.hit_frame == 0 && self.melee_attack_time <= 10 {
+        if self.hit_frame == 0 && self.melee_attack_time <= 10 && self.dash_speed == 0 {
             match self.health.checked_sub(damage) {
                 Some(v) => self.health = v,
                 None => self.health = 0,
@@ -367,21 +371,32 @@ fn melee_movement(player: &mut Player, image_assets: &ImageAssets) {
     };
 
     player.animation_state = PlayerState::Stand;
-    if player.controller.right() {
-        player.position.x += speed;
-        if player.is_attacking() == false {
-            player.direction = 1;
+    if player.dash_speed == 0
+    {
+        if player.controller.right() {
+            player.position.x += speed;
+            if player.is_attacking() == false {
+                player.direction = 1;
+            }
+    
+            player.animation_state = PlayerState::Run;
+        } else if player.controller.left() {
+            player.position.x -= speed;
+            if player.is_attacking() == false {
+                player.direction = -1;
+            }
+    
+            player.animation_state = PlayerState::Run;
         }
-
-        player.animation_state = PlayerState::Run;
-    } else if player.controller.left() {
-        player.position.x -= speed;
-        if player.is_attacking() == false {
-            player.direction = -1;
-        }
-
+    }
+    else
+    {
+        player.dash_speed -= 1;
+        player.dash_speed = player.dash_speed.max(0);
+        player.position.x += (player.dash_speed * player.direction) as f32;
         player.animation_state = PlayerState::Run;
     }
+    
 
     if player.controller.up() && on_the_ground(player.position) {
         player.jump_speed = 200;
@@ -417,8 +432,12 @@ fn melee_movement(player: &mut Player, image_assets: &ImageAssets) {
         }
     }
 
-    if player.controller.switch() {
+    if player.controller.attack_holding() > 150 && player.dash_speed == 0{
         player.weapon_type = WeaponType::Range;
+    }
+    else if player.controller.switch() && player.dash_speed == 0
+    {
+        player.dash_speed = 30;
     }
 }
 
@@ -443,11 +462,16 @@ fn range_movement(player: &mut Player) {
         player.crosshair_position.y += speed;
     }
 
-    if player.controller.switch() {
+    if player.controller.attack_holding() == 0 || player.dash_speed > 0{
         player.weapon_type = WeaponType::Melee;
     }
+    else if player.controller.switch() && player.dash_speed == 0
+    {
+        player.dash_speed = 30;
+    }
+    
 
-    if player.controller.attack() && player.range_attack_time == 0 {
+    if player.controller.attack_holding() > 0 && player.range_attack_time == 0 {
         player.range_attack_time = 120;
     }
 
